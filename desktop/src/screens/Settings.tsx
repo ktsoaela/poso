@@ -254,12 +254,39 @@ function AccountCard({ account }: { account: Account }) {
   );
 }
 
+function SampleMailNotice() {
+  const { boot, clearDemo, run } = useMail();
+  const [confirming, setConfirming] = useState(false);
+  const sample = boot?.accounts.filter((account) => account.auth_type === "local") ?? [];
+  if (!sample.length) return null;
+  return (
+    <Section title="Sample mail" description="These addresses are not real. Removing them deletes their messages, unused sample labels, and only the audit rows that belong to them.">
+      <p className="set-hint">{sample.map((account) => account.email).join(", ")}</p>
+      {confirming ? (
+        <div className="form-actions">
+          <button type="button" className="btn danger" onClick={() => void run(async () => { await clearDemo(); setConfirming(false); })}>
+            Remove sample mail
+          </button>
+          <button type="button" className="btn" onClick={() => setConfirming(false)}>
+            Keep it
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="btn danger-ghost" onClick={() => setConfirming(true)}>
+          <Trash2 size={15} /> Remove sample mail
+        </button>
+      )}
+    </Section>
+  );
+}
+
 function AccountsTab() {
   const { boot } = useMail();
   const [adding, setAdding] = useState(false);
   if (!boot) return null;
   return (
     <>
+      <SampleMailNotice />
       <Section title="Add an account" description="Gmail, Outlook / Microsoft 365, Yahoo, iCloud, or any IMAP server.">
         {adding ? (
           <AccountForm onDone={() => setAdding(false)} />

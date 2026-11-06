@@ -8,14 +8,14 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import OperationalError
 
 from session_mail import __version__
 from session_mail.audit import record
 from session_mail.auth.oauth import app_credentials, fresh_access_token, run_oauth, save_app_credentials
 from session_mail.config import OAUTH_REDIRECT_URI
-from session_mail.db import fts_search_ids, session_scope
+from session_mail.db import current_settings, fts_search_ids, session_scope
 from session_mail.search import parse as parse_search
 from session_mail.mail.errors import MailError
 from session_mail.mail.imap_client import (
@@ -44,6 +44,7 @@ from session_mail.models import (
     Account,
     AllowEntry,
     Attachment,
+    AuditEvent,
     BlockEntry,
     Draft,
     Folder,
@@ -52,6 +53,7 @@ from session_mail.models import (
     Message,
     MessageLabel,
     OutboxItem,
+    Rule,
     Setting,
 )
 from session_mail.secrets import secret_delete, secret_get, secret_put
@@ -1283,4 +1285,58 @@ def seed_demo() -> dict:
         seed_extras(db, made, business, personal, now, _html_body)
         record(db, "demo.seed", detail={"accounts": len(made)})
         _put_setting(db, "active_session_id", str(business.id))
+    return bootstrap()
+
+
+SAMPLE_LABELS = {"Clients", "Finance", "Urgent", "Family", "Travel"}
+SAMPLE_RULE = "Invoices to Finance"
+
+
+def clear_demo() -> dict:
+    """Remove sample addresses, their mail, unused sample labels, and sample audit rows.
+
+    Real accounts, their mail, and audit events that are not tied to a sample address stay.
+    """
+    with session_scope() as db:
+        accounts = db.scalars(select(Account).where(Account.auth_type == "local")).all()
+        account_ids = [account.id for account in accounts]
+        storage_names: list[str] = []
+        if account_ids:
+            storage_names = [
+                name
+                for name in db.scalars(
+                    select(Attachment.storage_name)
+                    .join(Message, Message.id == Attachment.message_id)
+                    .where(Message.account_id.in_(account_ids), Attachment.storage_name != "")
+                ).all()
+                if name
+            ]
+            db.execute(
+                delete(AuditEvent).where(or_(AuditEvent.account_id.in_(account_ids), AuditEvent.action == "demo.seed"))
+            )
+            for account in accounts:
+                secret_delete(f"account:{account.id}")
+                db.delete(account)
+            db.flush()
+        else:
+            db.execute(delete(AuditEvent).where(AuditEvent.action == "demo.seed"))
+        for label in db.scalars(select(Label).where(Label.name.in_(SAMPLE_LABELS))).all():
+            used = db.scalar(select(func.count()).select_from(MessageLabel).where(MessageLabel.label_id == label.id)) or 0
+            if used == 0:
+                db.delete(label)
+        db.flush()
+        live_labels = set(db.scalars(select(Label.id)).all())
+        for rule in db.scalars(select(Rule).where(Rule.name == SAMPLE_RULE)).all():
+            try:
+                actions = json.loads(rule.actions_json or "[]")
+            except json.JSONDecodeError:
+                actions = []
+            label_ids = [item.get("label_id") for item in actions if isinstance(item, dict) and item.get("label_id") is not None]
+            if not label_ids or any(label_id not in live_labels for label_id in label_ids):
+                db.delete(rule)
+        attachment_dir = current_settings().attachment_dir
+    for name in storage_names:
+        path = attachment_dir / name
+        if path.is_file():
+            path.unlink()
     return bootstrap()

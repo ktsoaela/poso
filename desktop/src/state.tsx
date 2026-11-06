@@ -140,6 +140,7 @@ interface MailValue {
   syncNow: () => Promise<void>;
   createLabel: (name: string, color?: string) => Promise<Label | null>;
   seedDemo: () => Promise<void>;
+  clearDemo: () => Promise<void>;
   addAccount: (body: Record<string, unknown>) => Promise<boolean>;
   updateAccount: (id: number, body: Record<string, unknown>) => Promise<void>;
   removeAccount: (id: number) => Promise<void>;
@@ -1128,6 +1129,12 @@ export function MailProvider({ children }: { children: ReactNode }) {
       run(async () => {
         await post("/api/demo/seed");
         await reload();
+      }),
+    clearDemo: () =>
+      run(async () => {
+        await post("/api/demo/clear");
+        await reload();
+        toast("Sample mail removed. Your accounts and their audit history are unchanged.", { tone: "success" });
       }),
     addAccount: async (body) => {
       try {

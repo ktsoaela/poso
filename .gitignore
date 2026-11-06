@@ -10,6 +10,7 @@ engine/dist/
 node_modules/
 desktop/dist/
 desktop/release/
+desktop/release-poso/
 desktop/src-tauri/target/
 desktop/src-tauri/binaries/
 desktop/src-tauri/engine-dist/

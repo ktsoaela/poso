@@ -35,7 +35,7 @@
     "appId": "app.poso.mail",
     "productName": "Poso",
     "directories": {
-      "output": "release"
+      "output": "release-poso"
     },
     "files": [
       "electron/**/*",

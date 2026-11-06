@@ -264,6 +264,85 @@ def test_old_database_gets_new_columns(tmp_path, monkeypatch):
     reset_db_state()
 
 
+def test_clear_demo_keeps_real_mail_and_its_audit(client, auth):
+    _, sessions, accounts = _seed(client, auth)
+    business = sessions["Business"]
+    sample_id = accounts["ada@northwind.example"]["id"]
+    listed = _list(client, auth, session_id=business, account_id=sample_id)
+    flagged = client.post(f"/api/messages/{listed[0]['id']}/flags", json={"flagged": True}, headers=auth)
+    assert flagged.status_code == 200, flagged.text
+
+    from sqlalchemy import select
+
+    from session_mail.audit import record
+    from session_mail.db import current_settings, session_scope
+    from session_mail.models import Account, Attachment, Folder, Label, Message, MessageLabel
+
+    with session_scope() as db:
+        sample_files = [name for name in db.scalars(select(Attachment.storage_name).where(Attachment.storage_name != "")).all() if name]
+        real = Account(
+            session_id=business,
+            email="real@example.com",
+            username="real@example.com",
+            display_name="Real",
+            provider="custom",
+            auth_type="password",
+            imap_host="imap.example.com",
+            imap_port=993,
+            imap_ssl=True,
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_mode="starttls",
+        )
+        db.add(real)
+        db.flush()
+        folder = Folder(account_id=real.id, imap_name="INBOX", role="inbox")
+        db.add(folder)
+        db.flush()
+        message = Message(
+            account_id=real.id,
+            folder_id=folder.id,
+            uid=1,
+            subject="Real invoice",
+            from_email="billing@example.com",
+        )
+        db.add(message)
+        db.flush()
+        finance = db.scalar(select(Label).where(Label.session_id == business, Label.name == "Finance"))
+        db.add(MessageLabel(message_id=message.id, label_id=finance.id))
+        record(db, "account.add", session_id=business, account_id=real.id, target=real.email)
+
+    cleared = client.post("/api/demo/clear", headers=auth)
+    assert cleared.status_code == 200, cleared.text
+    body = cleared.json()
+    assert {row["email"] for row in body["accounts"]} == {"real@example.com"}
+    business_labels = {row["name"] for row in body["labels"] if row["session_id"] == business}
+    assert "Finance" in business_labels
+    assert "Clients" not in business_labels
+    assert "Urgent" not in business_labels
+    personal_labels = {row["name"] for row in body["labels"] if row["session_id"] == sessions["Personal"]}
+    assert "Family" not in personal_labels
+    assert "Travel" not in personal_labels
+    remaining = _list(client, auth, session_id=business)
+    assert [row["subject"] for row in remaining] == ["Real invoice"]
+    rules = client.get("/api/rules", params={"session_id": business}, headers=auth).json()["rules"]
+    assert [row["name"] for row in rules] == ["Invoices to Finance"]
+    audit = client.get("/api/audit", params={"limit": 500}, headers=auth).json()
+    actions = [row["action"] for row in audit["events"]]
+    assert "demo.seed" not in actions
+    assert "message.flag" not in actions
+    assert actions.count("account.add") == 1
+    assert audit["events"][0]["target"] == "real@example.com"
+    attachment_dir = current_settings().attachment_dir
+    assert sample_files
+    assert all(not (attachment_dir / name).is_file() for name in sample_files)
+
+    again = client.post("/api/demo/clear", headers=auth)
+    assert again.status_code == 200
+    assert {row["email"] for row in again.json()["accounts"]} == {"real@example.com"}
+    assert "Finance" in {row["name"] for row in again.json()["labels"]}
+
+
 def test_invalid_recipients_are_rejected(client, auth):
     _, _, accounts = _seed(client, auth)
     ada = accounts["ada@northwind.example"]["id"]

@@ -38,7 +38,10 @@ if (-not (Test-Url "http://localhost:1420")) {
   }
   if (-not $up) { throw "The Poso UI did not start." }
 }
-$exe = Join-Path $desktop "release\win-unpacked\Poso.exe"
+$exe = @(
+  (Join-Path $desktop "release-poso\win-unpacked\Poso.exe"),
+  (Join-Path $desktop "release\win-unpacked\Poso.exe")
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
 $ico = Join-Path $desktop "electron\icon.ico"
 if ((Test-Path $exe) -and (Test-Path $ico)) {
   $programs = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"

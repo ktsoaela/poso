@@ -2,6 +2,12 @@
 
 Poso is a local mail client. The name means post in Sesotho. The window talks to a FastAPI engine on `127.0.0.1`.
 
+## First run
+
+Poso starts with two empty sessions, Business and Personal, and no mail. The first screen asks you to name those sessions and connect a real address: Gmail, Outlook / Microsoft 365, Yahoo, iCloud, or any IMAP server. Sign-in for Google and Microsoft opens in the browser. Other providers use an app password. Mail then syncs into the session you chose. Passwords never go into the audit log.
+
+**Explore with sample mail** is optional. It adds five local addresses (`@northwind.example` and `@personal.example`) so the window can be tried without a server. Those addresses do not send or receive real mail. Remove them from Settings → Accounts → Sample mail. That deletes the sample messages, sample labels that no real mail uses, and audit rows that belong only to the sample addresses. Real accounts and their audit history stay.
+
 ## Sessions
 
 A session is a workspace. **Business** and **Personal** are created the first time the engine starts. Each account belongs to one session. The inbox, search, spam queue, and the From menu only show the active session.
@@ -14,7 +20,7 @@ Provider presets fill the hosts for Gmail, Outlook, Yahoo, iCloud, and a custom 
 
 Gmail, Yahoo, and iCloud still accept an app password when the provider allows one. Outlook.com and Microsoft 365 accounts need browser sign-in. Passwords and refresh tokens are stored in Windows Credential Manager under the service name `SessionMail`. The mailbox itself is a SQLite file at `%APPDATA%\Session\mail.db`.
 
-The button **Explore with sample mail** loads five local addresses so the window can be tried without a server. Those addresses do not send real mail. Sending from a sample account stores the message in that account's Sent folder.
+The button **Explore with sample mail** loads five local addresses so the window can be tried without a server. Those addresses do not send real mail. Sending from a sample account stores the message in that account's Sent folder. Remove them later from Settings → Accounts → Sample mail. Removal does not delete real accounts or their audit rows.
 
 ## Google and Microsoft sign-in
 

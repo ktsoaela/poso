@@ -55,7 +55,7 @@ Mail is synced over IMAP and sent over SMTP, including Gmail and Outlook account
 .\scripts\dev.ps1
 ```
 
-The script opens the engine in another window and serves the UI at http://localhost:1420. On the first screen, choose **Explore with sample mail** or add an IMAP account.
+The script opens the engine in another window and serves the UI at http://localhost:1420. On the first screen, connect a real address. **Explore with sample mail** is optional; remove it later from Settings → Accounts without affecting real accounts or their audit history.
 
 | Goal | Command |
 | --- | --- |

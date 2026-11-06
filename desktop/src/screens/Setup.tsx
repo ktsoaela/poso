@@ -70,7 +70,10 @@ export function Setup() {
             </button>
           </form>
         </div>
-        <h2>2 · Connect your first account</h2>
+        <h2>2 · Connect a real address</h2>
+        <p className="set-hint">
+          This is the normal start. Poso opens with two empty sessions, Business and Personal. Add a Gmail, Outlook, or IMAP address here. Nothing is synced until you connect one. Sample mail is optional, stays on this computer, and can be removed later from Settings without touching a real account or its audit history.
+        </p>
         <AccountForm />
       </div>
     </div>

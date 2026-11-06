@@ -62,6 +62,7 @@ from session_mail.services import (
     move_message,
     report_spam,
     save_draft,
+    clear_demo,
     seed_demo,
     send_mail,
     set_flags,
@@ -302,6 +303,10 @@ def create_app() -> FastAPI:
     @app.post("/api/demo/seed")
     async def demo(_auth: None = Depends(require_bearer)) -> dict:
         return await call(seed_demo)
+
+    @app.post("/api/demo/clear")
+    async def clear_sample(_auth: None = Depends(require_bearer)) -> dict:
+        return await call(clear_demo)
 
     # ----- labels -----
     @app.post("/api/labels")
