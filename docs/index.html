@@ -4,390 +4,464 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Poso — mail, kept in sessions</title>
-  <meta name="description" content="Poso is a Windows mail client. Business and personal inboxes stay in separate sessions. Mail stays on your computer." />
+  <meta name="description" content="Poso is a Windows mail client. Work and personal inboxes stay in separate sessions. Mail stays on your computer." />
   <link rel="icon" href="logo.svg" type="image/svg+xml" />
   <style>
     :root {
       --green: #0e6b52;
-      --green-ink: #083d2f;
-      --cream: #f4f0e8;
-      --paper: #fffdf8;
-      --ink: #1c1915;
-      --muted: #5c564c;
-      --line: #e4dcd0;
+      --green-deep: #083d2f;
+      --ink: #1c1917;
+      --muted: #5e5852;
+      --line: #ece7e0;
+      --paper: #ffffff;
+      --wash: #f6f4f1;
+      --cream: #f7f4ef;
       --blue: #1d4e89;
       --brown: #8d4a32;
-      --shadow: 0 18px 50px rgba(28, 25, 21, 0.08);
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body {
       margin: 0;
       color: var(--ink);
-      background:
-        radial-gradient(900px 420px at 100% -10%, rgba(29, 78, 137, 0.08), transparent 60%),
-        radial-gradient(700px 380px at -10% 0%, rgba(14, 107, 82, 0.12), transparent 55%),
-        var(--cream);
+      background: var(--paper);
       font: 17px/1.55 "Segoe UI", system-ui, sans-serif;
     }
-    a { color: var(--green-ink); }
-    img { max-width: 100%; }
-    .wrap { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
-    header.top {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      backdrop-filter: blur(10px);
-      background: rgba(244, 240, 232, 0.88);
-      border-bottom: 1px solid var(--line);
+    a { color: inherit; }
+    img { max-width: 100%; display: block; }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+    header.bar {
+      position: sticky; top: 0; z-index: 3;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid transparent;
     }
     .nav {
-      display: flex;
-      align-items: center;
-      gap: 22px;
-      min-height: 64px;
+      min-height: 72px;
+      display: flex; align-items: center; gap: 28px;
     }
-    .brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; font-weight: 700; }
-    .brand img { width: 32px; height: 32px; }
-    .nav a.jump { color: var(--muted); text-decoration: none; font-size: 15px; }
-    .nav a.jump:hover { color: var(--ink); }
-    .nav .spacer { margin-left: auto; }
-    .hero { padding: 72px 0 36px; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: center; }
-    .kicker { letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; color: var(--brown); font-weight: 700; margin: 0 0 12px; }
-    h1 { font-size: clamp(42px, 6vw, 68px); line-height: 0.95; letter-spacing: -0.04em; margin: 0 0 16px; }
-    .lede { font-size: 20px; color: var(--muted); margin: 0 0 28px; max-width: 38em; }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 750; font-size: 20px; letter-spacing: -0.03em; }
+    .brand img { width: 36px; height: 36px; }
+    .nav-links { display: flex; gap: 22px; margin-left: 12px; }
+    .nav-links a { text-decoration: none; color: #3a342e; font-size: 15px; }
+    .nav-links a:hover { color: var(--green); }
+    .nav .end { margin-left: auto; }
     .btn {
       display: inline-flex; align-items: center; justify-content: center;
-      min-height: 42px; padding: 0 16px; border-radius: 999px;
-      text-decoration: none; font-weight: 650; border: 1px solid transparent;
+      min-height: 46px; padding: 0 22px; border-radius: 999px;
+      text-decoration: none; font-weight: 700; border: 1px solid transparent;
     }
-    .btn.primary { background: var(--green); color: white; }
-    .btn.ghost { background: transparent; color: var(--green-ink); border-color: #c9d7d1; }
-    .hero-card {
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: 28px;
-      padding: 22px;
-      box-shadow: var(--shadow);
+    .btn.green { background: var(--green); color: white; }
+    .btn.green:hover { background: var(--green-deep); }
+    .btn.line { background: white; color: var(--ink); border-color: #ddd6cc; }
+    .hero {
+      padding: 78px 0 20px;
+      text-align: center;
+      background: linear-gradient(#fff 0%, #fff 42%, #f7f4ef 100%);
     }
-    .hero-card img.shot { border-radius: 16px; display: block; border: 1px solid var(--line); }
-    .caption { color: var(--muted); font-size: 13px; margin: 12px 4px 0; }
-    section { padding: 28px 0 10px; }
-    h2 { font-size: 32px; letter-spacing: -0.03em; margin: 0 0 8px; }
-    .section-lead { color: var(--muted); margin: 0 0 22px; max-width: 46em; }
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-    .grid.two { grid-template-columns: 1fr 1fr; }
-    article.card {
-      background: var(--paper);
+    .kicker { margin: 0 0 18px; letter-spacing: .16em; text-transform: uppercase; font-size: 12px; font-weight: 700; color: var(--brown); }
+    h1 { margin: 0; font-size: clamp(46px, 6.4vw, 76px); line-height: .98; letter-spacing: -0.045em; font-weight: 760; }
+    h1 .accent { display: block; color: var(--green); }
+    .sub { max-width: 640px; margin: 22px auto 0; color: var(--muted); font-size: 20px; }
+    .hero-actions { display: flex; justify-content: center; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+    .shot {
+      width: min(1040px, calc(100% - 32px));
+      margin: 42px auto 0;
+      background: white;
       border: 1px solid var(--line);
       border-radius: 18px;
-      padding: 18px 18px 8px;
+      padding: 10px;
+      box-shadow: 0 30px 70px rgba(28, 25, 23, .12);
     }
-    article.card h3 { margin: 0 0 8px; font-size: 18px; }
-    article.card ul { margin: 0; padding: 0 0 8px 18px; }
-    article.card li { margin: 0 0 6px; }
-    .wide { grid-column: 1 / -1; }
-    .mark { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 8px; }
-    code, .path {
-      font-family: Consolas, "Cascadia Mono", monospace;
-      font-size: 0.92em;
-      background: #efe8dc;
-      padding: 0 5px;
-      border-radius: 5px;
+    .shot img { border-radius: 10px; width: 100%; }
+    .shot p { margin: 10px 8px 4px; color: var(--muted); font-size: 13px; text-align: left; }
+    section { padding: 78px 0; }
+    section.wash { background: var(--wash); }
+    section.cream { background: var(--cream); }
+    h2 { margin: 0 0 10px; font-size: clamp(32px, 4vw, 44px); letter-spacing: -0.035em; line-height: 1.05; }
+    .center { text-align: center; }
+    .lead { color: var(--muted); margin: 0 auto 34px; max-width: 640px; }
+    .center .lead { margin-left: auto; margin-right: auto; }
+    .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .tool {
+      background: white; border: 1px solid var(--line); border-radius: 16px;
+      padding: 18px 16px 16px; text-decoration: none; min-height: 148px;
     }
-    .install {
-      margin: 36px 0 10px;
-      background: var(--green-ink);
-      color: #f4f0e8;
-      border-radius: 24px;
-      padding: 28px;
+    .tool:hover { border-color: #c9ddd4; }
+    .tool svg { display: block; margin-bottom: 12px; }
+    .tool strong { display: block; margin-bottom: 4px; }
+    .tool span { color: var(--muted); font-size: 14.5px; }
+    .split { display: grid; grid-template-columns: 1fr 1.4fr; gap: 36px; align-items: start; }
+    .areas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .area {
+      display: block; text-decoration: none; background: white;
+      border-radius: 16px; padding: 22px 20px; border: 1px solid var(--line); min-height: 132px;
     }
-    .install a { color: #d7efe6; }
-    .install h2 { margin-top: 0; }
-    .install p { color: #d9d3c7; }
-    footer { padding: 28px 0 48px; color: var(--muted); font-size: 14px; }
-    @media (max-width: 860px) {
-      .hero, .grid, .grid.two { grid-template-columns: 1fr; }
-      .nav a.jump { display: none; }
+    .area:hover { border-color: var(--green); }
+    .area b { display: block; font-size: 20px; margin-bottom: 6px; }
+    .area span { color: var(--muted); font-size: 15px; }
+    .providers { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .pill {
+      background: white; border: 1px solid var(--line); border-radius: 999px;
+      padding: 12px 18px; font-weight: 700;
+    }
+    .catalog { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 40px; }
+    .catalog h3 { margin: 0 0 6px; font-size: 18px; }
+    .catalog ul { margin: 0; padding-left: 18px; color: #3f3a34; }
+    .catalog li { margin: 0 0 5px; }
+    .feature-switch input { position: absolute; opacity: 0; pointer-events: none; }
+    .tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 8px 0 22px; }
+    .tabs label {
+      cursor: pointer; border: 1px solid var(--line); background: white;
+      border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 700;
+    }
+    .panels .panel { display: none; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .feat {
+      background: white; border: 1px solid var(--line); border-radius: 16px;
+      padding: 16px 16px 14px; min-height: 112px;
+    }
+    .feat b { display: block; margin-bottom: 4px; }
+    .feat span { color: var(--muted); font-size: 14.5px; }
+    #f-read:checked ~ .tabs label[for="f-read"],
+    #f-org:checked ~ .tabs label[for="f-org"],
+    #f-find:checked ~ .tabs label[for="f-find"],
+    #f-write:checked ~ .tabs label[for="f-write"],
+    #f-rules:checked ~ .tabs label[for="f-rules"],
+    #f-data:checked ~ .tabs label[for="f-data"],
+    #f-life:checked ~ .tabs label[for="f-life"] {
+      background: var(--green); color: white; border-color: var(--green);
+    }
+    #f-read:checked ~ .panels .read,
+    #f-org:checked ~ .panels .org,
+    #f-find:checked ~ .panels .find,
+    #f-write:checked ~ .panels .write,
+    #f-rules:checked ~ .panels .rules,
+    #f-data:checked ~ .panels .data,
+    #f-life:checked ~ .panels .life { display: grid; }
+    .downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; text-align: left; margin-top: 8px; }
+    .dl {
+      background: white; border: 1px solid var(--line); border-radius: 20px; padding: 22px;
+      display: flex; flex-direction: column; gap: 8px; min-height: 230px;
+    }
+    .dl .os { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--brown); font-weight: 700; }
+    .dl h3 { margin: 0; font-size: 28px; letter-spacing: -0.03em; }
+    .dl p { margin: 0; color: var(--muted); flex: 1; }
+    .dl .file { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; color: #6d675f; }
+    .fine { color: var(--muted); font-size: 14px; margin: 22px auto 0; max-width: 720px; }
+    .fine a { color: var(--green-deep); }
+    footer { background: #141210; color: #d9d3c7; padding: 42px 0 28px; }
+    .foot { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 24px; }
+    footer a { color: #f4f0e8; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    footer h3 { margin: 0 0 10px; color: white; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+    footer ul { list-style: none; margin: 0; padding: 0; }
+    footer li { margin: 0 0 7px; }
+    .legal { margin-top: 28px; color: #9c958c; font-size: 13px; }
+    code { font-family: Consolas, "Cascadia Mono", monospace; font-size: .92em; }
+    @media (max-width: 900px) {
+      .tools, .panels .panel, .downloads, .foot { grid-template-columns: 1fr 1fr; }
+      .split, .areas { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+    }
+    @media (max-width: 640px) {
+      .tools, .panels .panel, .downloads, .foot { grid-template-columns: 1fr; }
+      h1 { font-size: 42px; }
     }
   </style>
 </head>
 <body>
-  <header class="top">
+  <header class="bar">
     <div class="wrap nav">
       <a class="brand" href="#top"><img src="logo.svg" alt="" /> Poso</a>
-      <a class="jump" href="#sessions">Sessions</a>
-      <a class="jump" href="#mail">Mail</a>
-      <a class="jump" href="#organizer">Organizer</a>
-      <a class="jump" href="#trust">On this PC</a>
-      <span class="spacer"></span>
-      <a class="jump" href="../README.md">README</a>
-      <a class="jump" href="guide.md">Guide</a>
+      <nav class="nav-links">
+        <a href="#workflow">Mail</a>
+        <a href="#beyond">Organizer</a>
+        <a href="#accounts">Accounts</a>
+        <a href="#all">All features</a>
+        <a href="guide.md">Guide</a>
+      </nav>
+      <div class="end"><a class="btn green" href="#run">Download</a></div>
     </div>
   </header>
 
   <main id="top">
-    <div class="wrap hero">
-      <div>
+    <div class="hero">
+      <div class="wrap">
         <p class="kicker">Poso · post, in Sesotho</p>
-        <h1>All your inboxes. Neatly kept apart.</h1>
-        <p class="lede">A Windows mail client that puts work addresses and personal addresses in separate sessions. Search, spam, rules, and the From menu stay inside the session you picked. The mail itself stays on this computer.</p>
-        <div class="actions">
-          <a class="btn primary" href="#features">Every feature</a>
-          <a class="btn ghost" href="guide.md">Read the guide</a>
+        <h1>All your inboxes.<span class="accent">Neatly kept apart.</span></h1>
+        <p class="sub">A Windows mail client for work and home. Search, spam, rules, and the From menu stay inside the session you picked. The mail stays on this computer.</p>
+        <div class="hero-actions">
+          <a class="btn green" href="#run">Download</a>
+          <a class="btn line" href="#all">See every feature</a>
         </div>
       </div>
-      <div class="hero-card">
-        <img class="shot" src="session-demo.png" alt="Poso open on the Business session, with the Q4 forecast message in the reading pane" />
-        <p class="caption">Business session. A colored bar on each row shows which address received the mail.</p>
+      <div class="shot">
+        <img src="session-demo.png" alt="Poso open on the Business session, with a message open in the reading pane" />
+        <p>Business session. A colored bar on each row shows which address received the mail.</p>
       </div>
     </div>
 
-    <section id="sessions">
+    <section id="workflow">
       <div class="wrap">
-        <h2>Sessions, not one mixed inbox</h2>
-        <p class="section-lead">A session is a workspace. The first launch creates two empty ones, Business and Personal. You name them, add more, and put each account in one session. Switching sessions swaps the whole window.</p>
-        <div class="grid">
-          <article class="card">
-            <h3><span class="mark" style="background:#0e6b52"></span>Work and home</h3>
-            <ul>
-              <li>Business addresses stay out of the personal inbox, and the other way around.</li>
-              <li>Switch from the header, or with <code>Ctrl+1</code> through <code>Ctrl+9</code>.</li>
-              <li>Move an account to another session from Settings.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3><span class="mark" style="background:#1d4e89"></span>What stays inside</h3>
-            <ul>
-              <li>Inbox, folders, search, spam, rules, and labels.</li>
-              <li>The compose From menu only lists addresses in the active session.</li>
-              <li>Calendar, contacts, to-dos, notes, and reminders belong to that session too.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3><span class="mark" style="background:#8d4a32"></span>First run</h3>
-            <ul>
-              <li>Name the sessions, then connect a real address.</li>
-              <li>Nothing syncs until an account is connected.</li>
-              <li>Sample mail is optional. Remove it later without touching real accounts or their audit history.</li>
-            </ul>
-          </article>
+        <div class="center">
+          <h2>The tools you use every day</h2>
+          <p class="lead">One list for every account in the session, and the actions you reach for without leaving the message.</p>
+        </div>
+        <div class="tools">
+          <a class="tool" href="#sessions">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="3" y="5" width="9" height="18" rx="2" fill="#0e6b52"/><rect x="15" y="5" width="10" height="8" rx="2" fill="#1d4e89"/><rect x="15" y="16" width="10" height="7" rx="2" fill="#8d4a32"/></svg>
+            <strong>Sessions</strong>
+            <span>Business and Personal start empty. Switch the whole workspace in one click.</span>
+          </a>
+          <a class="tool" href="#reading">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="3" y="4" width="22" height="20" rx="3" fill="none" stroke="#0e6b52" stroke-width="2"/><path d="M7 10h14M7 14h10M7 18h12" stroke="#1c1917" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <strong>Rich mail</strong>
+            <span>HTML and CSS in a sandbox. Remote images stay blocked until you allow them.</span>
+          </a>
+          <a class="tool" href="#search">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="none" stroke="#0e6b52" stroke-width="2"/><path d="M17.5 17.5 24 24" stroke="#0e6b52" stroke-width="2" stroke-linecap="round"/></svg>
+            <strong>Search</strong>
+            <span>Full text, plus from, subject, label, attachment, and date operators.</span>
+          </a>
+          <a class="tool" href="#rules">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><path d="M5 7h18M5 14h12M5 21h8" stroke="#1c1917" stroke-width="2" stroke-linecap="round"/><circle cx="22" cy="20" r="3" fill="#0e6b52"/></svg>
+            <strong>Rules</strong>
+            <span>From, subject, or account can label, archive, flag, or file as spam.</span>
+          </a>
+          <a class="tool" href="#organising">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><path d="M14 4l2.2 6.2L23 12l-6.8 1.8L14 20l-2.2-6.2L5 12l6.8-1.8z" fill="#0e6b52"/></svg>
+            <strong>Snooze and pin</strong>
+            <span>Hide a thread until later, or keep the one you need at the top.</span>
+          </a>
+          <a class="tool" href="#writing">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="20" height="16" rx="3" fill="none" stroke="#0e6b52" stroke-width="2"/><path d="M4 10l10 6 10-6" fill="none" stroke="#0e6b52" stroke-width="2"/></svg>
+            <strong>Write and send later</strong>
+            <span>Rich text, signatures, undo send, and a message that waits until the time you chose.</span>
+          </a>
+          <a class="tool" href="#spam">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><path d="M6 8h16v12H6z" fill="none" stroke="#8d4a32" stroke-width="2"/><path d="M8 18l4-4 3 2 5-6" fill="none" stroke="#0e6b52" stroke-width="2" stroke-linecap="round"/></svg>
+            <strong>Spam</strong>
+            <span>Provider junk, a blocklist, and a local filter trained from what you mark.</span>
+          </a>
+          <a class="tool" href="#audit">
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="6" y="3" width="16" height="22" rx="2" fill="none" stroke="#1d4e89" stroke-width="2"/><path d="M10 10h8M10 15h8M10 20h5" stroke="#1d4e89" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <strong>Audit log</strong>
+            <span>Sends, moves, deletes, and imports, with CSV and JSON export. Passwords are never in it.</span>
+          </a>
         </div>
       </div>
     </section>
 
-    <section id="features">
-      <div class="wrap">
-        <h2>Features</h2>
-        <p class="section-lead">Poso is the window. A local engine stores the mailbox, syncs over IMAP, and sends over SMTP. Gmail and Outlook can sign in through the browser.</p>
-        <div class="grid">
-          <article class="card">
-            <h3>Layout</h3>
-            <ul>
-              <li>Header with the session switcher, search, and settings.</li>
-              <li>Sidebar for folders, labels, and accounts.</li>
-              <li>Reading pane on the right, along the bottom, or off.</li>
-              <li>Light and dark themes, seven accents, comfortable or compact density.</li>
-              <li>Footer with engine state, last sync, and version.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Accounts</h3>
-            <ul>
-              <li>Gmail, Outlook / Microsoft 365, Yahoo, iCloud, or any IMAP server.</li>
-              <li>Google and Microsoft sign-in opens in the browser, with PKCE and XOAUTH2.</li>
-              <li>Other providers use an app password.</li>
-              <li>Passwords and refresh tokens go to Windows Credential Manager, not the audit log.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Reading</h3>
-            <ul>
-              <li>Conversation view.</li>
-              <li>The sender’s HTML and CSS render in a sandboxed frame.</li>
-              <li>Inline <code>cid:</code> images. Remote images stay blocked until you allow them.</li>
-              <li>Attachment cards, plain-text toggle, full headers, print, and save as <code>.eml</code>.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Organising</h3>
-            <ul>
-              <li>Labels across every account in the session.</li>
-              <li>Flag, pin to the top, snooze, archive, and move.</li>
-              <li>Bulk select, with hover actions.</li>
-              <li>Undo after archive or delete.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Search</h3>
-            <ul>
-              <li>Full text across the session, or limited to the open folder.</li>
-              <li><code>from:</code> <code>to:</code> <code>subject:</code> <code>label:</code> <code>account:</code></li>
-              <li><code>in:</code> <code>has:attachment</code> <code>is:unread</code> <code>is:flagged</code></li>
-              <li><code>before:</code> <code>after:</code> <code>newer:7d</code> <code>older:1m</code></li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Writing</h3>
-            <ul>
-              <li>Rich text, per-account HTML signatures, and contact autocomplete.</li>
-              <li>Cc, Bcc, drag-and-drop attachments, and inline images.</li>
-              <li>High priority and read receipts.</li>
-              <li>Undo send, scheduled send, and drafts that save themselves.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Rules</h3>
-            <ul>
-              <li>Conditions on From, To, Cc, subject, body, or the receiving account.</li>
-              <li>Actions: label, mark read, flag, archive, spam, or delete.</li>
-              <li>Rules run on new mail, and on the inbox when you ask.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Spam</h3>
-            <ul>
-              <li>The provider junk folder joins the session spam queue.</li>
-              <li>Spam blocklists the sender. Not spam allowlists them and trains the filter.</li>
-              <li>A local Bayesian filter files high-scoring mail, with Undo.</li>
-              <li>Allowlisted senders are not auto-filed.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Shortcuts</h3>
-            <ul>
-              <li><code>Ctrl+K</code> command palette. <code>?</code> lists every shortcut.</li>
-              <li><code>C</code> compose, <code>R</code> reply, <code>A</code> reply all, <code>F</code> forward.</li>
-              <li><code>E</code> archive, <code>#</code> delete, <code>S</code> flag, <code>!</code> spam.</li>
-              <li><code>J</code> and <code>K</code> move through the list. <code>Ctrl+Enter</code> sends.</li>
-            </ul>
-          </article>
+    <section class="wash" id="beyond">
+      <div class="wrap split">
+        <div>
+          <h2>More than the inbox</h2>
+          <p class="lead">Calendar, contacts, to-dos, notes, and reminders belong to the session you are in. Switch them with Alt+1 through Alt+6.</p>
+        </div>
+        <div class="areas">
+          <a class="area" href="#reading"><b>Mail</b><span>Conversations, folders, labels, and a reading pane on the right, the bottom, or off.</span></a>
+          <a class="area" href="#organizer"><b>Calendar</b><span>Month and agenda, with alerts that still show if Poso was closed.</span></a>
+          <a class="area" href="#organizer"><b>Contacts</b><span>Taken from mail you already have, and offered while you compose.</span></a>
+          <a class="area" href="#organizer"><b>To Do</b><span>My Day, Important, and Planned, with a due time.</span></a>
+          <a class="area" href="#organizer"><b>Notes</b><span>Autosave, pin, and color. They stay with the session.</span></a>
+          <a class="area" href="#organizer"><b>Reminders</b><span>Repeat, snooze, and a notification with the Poso logo.</span></a>
         </div>
       </div>
     </section>
 
-    <section id="mail">
-      <div class="wrap">
-        <h2>Your mail, and a record of what changed</h2>
-        <div class="grid two">
-          <article class="card">
-            <h3>Import and export</h3>
-            <ul>
-              <li>Export MBOX, a zip of EML files, a JSON backup, or a contacts CSV.</li>
-              <li>The backup includes mail, labels, rules, signatures, and block lists.</li>
-              <li>Import <code>.eml</code>, <code>.mbox</code>, and zips of <code>.eml</code>, including Thunderbird, Apple Mail, and Google Takeout.</li>
-              <li>Importing the same file again does not duplicate it. An IMAP account can also upload the import to the server.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Audit log</h3>
-            <ul>
-              <li>An append-only log of sign-ins, sends, moves, deletes, spam decisions, rules, imports, exports, and settings changes.</li>
-              <li>Filter by text, event type, session, and date.</li>
-              <li>Export the log as CSV or JSON.</li>
-              <li>Passwords are never written into it. Removing sample mail deletes only the sample rows and does not add a new event.</li>
-            </ul>
-          </article>
-          <article class="card wide">
-            <h3>Notifications</h3>
-            <ul>
-              <li>Native Windows notifications for new mail, reminders, event alerts, and due to-dos, with the Poso logo.</li>
-              <li>Clicking a notification opens that item.</li>
-              <li>Alerts that come due while Poso is closed appear on the next launch.</li>
-            </ul>
-          </article>
+    <section id="accounts">
+      <div class="wrap split">
+        <div>
+          <h2>Use the address you already have</h2>
+          <p class="lead">Gmail and Outlook sign in through the browser. Yahoo, iCloud, and any other IMAP server use an app password. Passwords go to Windows Credential Manager, not the audit log.</p>
+        </div>
+        <div>
+          <div class="providers">
+            <span class="pill">Gmail</span>
+            <span class="pill">Outlook / Microsoft 365</span>
+            <span class="pill">Yahoo</span>
+            <span class="pill">iCloud</span>
+            <span class="pill">Any IMAP server</span>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="organizer">
+    <section class="cream" id="sessions">
       <div class="wrap">
-        <h2>Organizer, per session</h2>
-        <p class="section-lead">Switch with <code>Alt+1</code> through <code>Alt+6</code>. Each tool belongs to the session you are in.</p>
-        <div class="grid">
-          <article class="card">
-            <h3>Calendar</h3>
-            <ul>
-              <li>Month grid and agenda.</li>
-              <li>Event alerts, including ones that were due while the app was closed.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Contacts</h3>
-            <ul>
-              <li>Collected from mail you already have.</li>
-              <li>They feed compose autocomplete.</li>
-              <li>Import and export as CSV.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>To Do</h3>
-            <ul>
-              <li>My Day, Important, and Planned.</li>
-              <li>Due-time alerts.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Notes</h3>
-            <ul>
-              <li>Autosave.</li>
-              <li>Pin the ones you want at the top.</li>
-              <li>Color them.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Reminders</h3>
-            <ul>
-              <li>A time, a repeat, and snooze.</li>
-              <li>They notify with the same Poso icon as new mail.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Snooze and scheduled send</h3>
-            <ul>
-              <li>Snooze hides a conversation until the time you chose, then returns it unread.</li>
-              <li>Scheduled messages wait in Scheduled. Opening one lets you edit it before it sends.</li>
-            </ul>
-          </article>
+        <div class="center">
+          <h2>Two inboxes. One window.</h2>
+          <p class="lead">The first launch creates Business and Personal, both empty. Name them, add another, and put each account in one session. Nothing is mixed until you put it there.</p>
+        </div>
+        <div class="tools">
+          <div class="tool"><strong>Work stays at work</strong><span>Search and spam in Business never show the personal accounts.</span></div>
+          <div class="tool"><strong>Home stays at home</strong><span>The compose From menu only lists addresses in the session you are viewing.</span></div>
+          <div class="tool"><strong>Switch in place</strong><span>The header menu, or Ctrl+1 through Ctrl+9, swaps the whole workspace.</span></div>
+          <div class="tool"><strong>Sample mail is optional</strong><span>Try the window without a server, then remove the sample without touching real mail or its audit rows.</span></div>
         </div>
       </div>
     </section>
 
-    <section id="trust">
-      <div class="wrap">
-        <h2>It runs on the computer you are using</h2>
-        <div class="grid two">
-          <article class="card">
-            <h3>Where things live</h3>
-            <ul>
-              <li>The window is Electron. The engine is FastAPI on <code>127.0.0.1</code>.</li>
-              <li>The mailbox is SQLite at <span class="path">%APPDATA%\Session\mail.db</span>.</li>
-              <li>Passwords and tokens use Credential Manager, service name <span class="path">SessionMail</span>.</li>
-            </ul>
+    <section class="wash" id="all">
+      <div class="wrap feature-switch">
+        <div class="center">
+          <h2>Every feature</h2>
+          <p class="lead">The same pieces other mail clients put up front: read, file, write, search, then the rest of the desk. Pick one.</p>
+        </div>
+        <input type="radio" name="feat" id="f-read" checked />
+        <input type="radio" name="feat" id="f-org" />
+        <input type="radio" name="feat" id="f-find" />
+        <input type="radio" name="feat" id="f-write" />
+        <input type="radio" name="feat" id="f-rules" />
+        <input type="radio" name="feat" id="f-data" />
+        <input type="radio" name="feat" id="f-life" />
+        <div class="tabs">
+          <label for="f-read">Reading</label>
+          <label for="f-org">Organising</label>
+          <label for="f-find">Search</label>
+          <label for="f-write">Writing</label>
+          <label for="f-rules">Rules and spam</label>
+          <label for="f-data">Your data</label>
+          <label for="f-life">Organizer</label>
+        </div>
+        <div class="panels">
+          <div class="panel read" id="reading">
+            <article class="feat"><b>Conversations</b><span>A thread stays together in the three-pane window.</span></article>
+            <article class="feat"><b>Real HTML</b><span>The sender’s HTML and CSS render in a sandbox.</span></article>
+            <article class="feat"><b>Images on your terms</b><span>Inline pictures show. Remote images wait until you allow them.</span></article>
+            <article class="feat"><b>Attachments</b><span>Cards for files, plus print, plain text, full headers, and save as .eml.</span></article>
+            <article class="feat"><b>Make it yours</b><span>Light or dark, seven accents, comfortable or compact.</span></article>
+            <article class="feat"><b>Reading pane</b><span>On the right, along the bottom, or off.</span></article>
+          </div>
+          <div class="panel org" id="organising">
+            <article class="feat"><b>Labels</b><span>One set of labels for every account in the session.</span></article>
+            <article class="feat"><b>Flag and pin</b><span>Star a message, or keep it at the top.</span></article>
+            <article class="feat"><b>Snooze</b><span>Hide it until the time you chose, then it returns unread.</span></article>
+            <article class="feat"><b>Archive and move</b><span>File it away, or drop it in another folder.</span></article>
+            <article class="feat"><b>Bulk select</b><span>Act on many rows at once, with hover actions.</span></article>
+            <article class="feat"><b>Undo</b><span>Archive and delete can be taken back.</span></article>
+          </div>
+          <div class="panel find" id="search">
+            <article class="feat"><b>Full text</b><span>Search the whole session, or only the folder you have open.</span></article>
+            <article class="feat"><b>People and subject</b><span>from: to: subject: label: account:</span></article>
+            <article class="feat"><b>What it is</b><span>in: has:attachment is:unread is:flagged</span></article>
+            <article class="feat"><b>When it arrived</b><span>before: after: newer:7d older:1m</span></article>
+          </div>
+          <div class="panel write" id="writing">
+            <article class="feat"><b>Rich text</b><span>Write formatted mail, with a signature per account.</span></article>
+            <article class="feat"><b>The right people</b><span>Autocomplete from contacts. Cc and Bcc when you need them.</span></article>
+            <article class="feat"><b>Files and pictures</b><span>Drag files on, or place an image in the message.</span></article>
+            <article class="feat"><b>Ask for attention</b><span>High priority and a read receipt.</span></article>
+            <article class="feat"><b>Undo send</b><span>A short pause before it actually leaves.</span></article>
+            <article class="feat"><b>Send later</b><span>Drafts save themselves. Scheduled mail waits until you say.</span></article>
+          </div>
+          <div class="panel rules" id="rules">
+            <article class="feat" id="spam"><b>Conditions</b><span>From, To, Cc, subject, body, or the account that received it.</span></article>
+            <article class="feat"><b>Actions</b><span>Label, mark read, flag, archive, spam, or delete.</span></article>
+            <article class="feat"><b>When they run</b><span>On new mail, and across the inbox when you ask.</span></article>
+            <article class="feat"><b>Junk, together</b><span>The provider junk folder joins this session’s spam queue.</span></article>
+            <article class="feat"><b>Block and allow</b><span>Spam blocklists the sender. Not spam allowlists them and trains the filter.</span></article>
+            <article class="feat"><b>A local filter</b><span>High-scoring mail can be filed for you, with Undo. Allowlisted senders stay put.</span></article>
+          </div>
+          <div class="panel data" id="audit">
+            <article class="feat"><b>Take mail out</b><span>MBOX, a zip of EML files, a JSON backup, or a contacts CSV.</span></article>
+            <article class="feat"><b>Bring mail in</b><span>.eml, .mbox, and zips, including Thunderbird, Apple Mail, and Google Takeout.</span></article>
+            <article class="feat"><b>No duplicates</b><span>Importing the same file again does not copy it twice.</span></article>
+            <article class="feat"><b>What the backup holds</b><span>Mail, labels, rules, signatures, and block lists.</span></article>
+            <article class="feat"><b>Audit log</b><span>Sends, moves, deletes, spam, rules, imports, and settings. Filter it, then export CSV or JSON.</span></article>
+            <article class="feat"><b>Sample mail</b><span>Remove the sample and only its audit rows. Real accounts stay, and the removal is not logged.</span></article>
+          </div>
+          <div class="panel life" id="organizer">
+            <article class="feat"><b>Calendar</b><span>Month and agenda, with alerts that still appear if Poso was closed.</span></article>
+            <article class="feat"><b>Contacts</b><span>Collected from mail you have, offered while you compose, in and out as CSV.</span></article>
+            <article class="feat"><b>To Do</b><span>My Day, Important, and Planned, with a due time.</span></article>
+            <article class="feat"><b>Notes</b><span>Autosave, pin, and color, kept with the session.</span></article>
+            <article class="feat"><b>Reminders</b><span>Repeat, snooze, and a notification with the Poso logo.</span></article>
+            <article class="feat"><b>Shortcuts</b><span>Ctrl+K opens the palette. C, R, E, #, and S do the daily mail actions. ? lists the rest.</span></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="run">
+      <div class="wrap center">
+        <h2>Download</h2>
+        <p class="lead">Windows, Android, and Linux. Each button downloads that file from the latest GitHub release.</p>
+        <div class="downloads">
+          <article class="dl">
+            <div class="os">Windows</div>
+            <h3>Installer</h3>
+            <p>The desktop app for this PC. Mail stays in a local mailbox.</p>
+            <a class="btn green" href="https://github.com/ktsoaela/poso/releases/latest/download/Poso.Setup.exe">Download for Windows</a>
+            <span class="file">Poso.Setup.exe</span>
           </article>
-          <article class="card">
-            <h3>Sample mail</h3>
-            <ul>
-              <li><strong>Explore with sample mail</strong> adds five local addresses so the window can be tried without a server.</li>
-              <li>They do not send or receive real mail.</li>
-              <li>Settings → Accounts → Sample mail removes them, their messages, unused sample labels, and only their audit rows.</li>
-            </ul>
+          <article class="dl">
+            <div class="os">Android</div>
+            <h3>Phone</h3>
+            <p>Install the APK on the phone. It is the Android build from the same release.</p>
+            <a class="btn green" href="https://github.com/ktsoaela/poso/releases/latest/download/Poso.apk">Download for Android</a>
+            <span class="file">Poso.apk</span>
+          </article>
+          <article class="dl">
+            <div class="os">Linux</div>
+            <h3>AppImage</h3>
+            <p>One file you can run on most Linux desktops, from the same release.</p>
+            <a class="btn green" href="https://github.com/ktsoaela/poso/releases/latest/download/Poso.AppImage">Download for Linux</a>
+            <span class="file">Poso.AppImage</span>
           </article>
         </div>
-        <div class="install" id="install">
-          <h2>Run it</h2>
-          <p>From a clone of this repository:</p>
-          <p><span class="path">.\scripts\dev.ps1</span> opens the engine and the UI at <span class="path">http://localhost:1420</span>.</p>
-          <p><span class="path">cd desktop; npm run pack</span> writes the installer to <span class="path">desktop\release-poso\Poso Setup 1.0.0.exe</span>. That file is a build output. It is not stored in git.</p>
-          <p>Setup, sign-in, spam, and shortcuts are in the <a href="guide.md">guide</a>. Development commands are in the <a href="../README.md">README</a>.</p>
-        </div>
+        <p class="fine">The files have to be attached to the latest release of <a href="https://github.com/ktsoaela/poso/releases">ktsoaela/poso</a> under those exact names. Setup notes are in the <a href="guide.md">guide</a>.</p>
       </div>
     </section>
   </main>
 
   <footer>
-    <div class="wrap">Poso. MIT license. Copyright 2026 Khotso Tsoaela.</div>
+    <div class="wrap foot">
+      <div>
+        <a class="brand" href="#top" style="color:white"><img src="logo.svg" alt="" /> Poso</a>
+        <p>Post, in Sesotho. A Windows mail client that keeps work and home in separate sessions.</p>
+      </div>
+      <div>
+        <h3>Product</h3>
+        <ul>
+          <li><a href="#workflow">Mail</a></li>
+          <li><a href="#beyond">Organizer</a></li>
+          <li><a href="#accounts">Accounts</a></li>
+          <li><a href="#all">All features</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <ul>
+          <li><a href="guide.md">Guide</a></li>
+          <li><a href="../README.md">README</a></li>
+          <li><a href="#run">Run and install</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>On this PC</h3>
+        <ul>
+          <li>SQLite mailbox</li>
+          <li>Credential Manager</li>
+          <li>IMAP and SMTP</li>
+          <li>Local audit log</li>
+        </ul>
+      </div>
+    </div>
+    <div class="wrap legal">MIT license. Copyright 2026 Khotso Tsoaela.</div>
   </footer>
+  <script>
+    const tabs = {
+      reading: "f-read", organising: "f-org", search: "f-find", writing: "f-write",
+      rules: "f-rules", spam: "f-rules", audit: "f-data", organizer: "f-life"
+    };
+    function showFeature() {
+      const id = (location.hash || "").slice(1);
+      const input = document.getElementById(tabs[id] || "");
+      if (input) input.checked = true;
+    }
+    window.addEventListener("hashchange", showFeature);
+    showFeature();
+  </script>
 </body>
 </html>

@@ -18,7 +18,7 @@ Rename a session from the first-run screen, or add another one there. Move an ac
 
 Provider presets fill the hosts for Gmail, Outlook, Yahoo, iCloud, and a custom IMAP server.
 
-Gmail, Yahoo, and iCloud still accept an app password when the provider allows one. Outlook.com and Microsoft 365 accounts need browser sign-in. Passwords and refresh tokens are stored in Windows Credential Manager under the service name `SessionMail`. The mailbox itself is a SQLite file at `%APPDATA%\Session\mail.db`.
+Gmail, Yahoo, and iCloud still accept an app password when the provider allows one. Outlook.com and Microsoft 365 accounts need browser sign-in. Passwords and refresh tokens are stored in Windows Credential Manager under the service name `SessionMail`. On Windows the mailbox is `%APPDATA%\Session\mail.db`.
 
 The button **Explore with sample mail** loads five local addresses so the window can be tried without a server. Those addresses do not send real mail. Sending from a sample account stores the message in that account's Sent folder. Remove them later from Settings → Accounts → Sample mail. Removal does not delete real accounts or their audit rows.
 
