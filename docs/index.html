@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Poso — mail, kept in sessions</title>
+  <meta name="description" content="Poso is a Windows mail client. Business and personal inboxes stay in separate sessions. Mail stays on your computer." />
+  <link rel="icon" href="logo.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --green: #0e6b52;
+      --green-ink: #083d2f;
+      --cream: #f4f0e8;
+      --paper: #fffdf8;
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --line: #e4dcd0;
+      --blue: #1d4e89;
+      --brown: #8d4a32;
+      --shadow: 0 18px 50px rgba(28, 25, 21, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 420px at 100% -10%, rgba(29, 78, 137, 0.08), transparent 60%),
+        radial-gradient(700px 380px at -10% 0%, rgba(14, 107, 82, 0.12), transparent 55%),
+        var(--cream);
+      font: 17px/1.55 "Segoe UI", system-ui, sans-serif;
+    }
+    a { color: var(--green-ink); }
+    img { max-width: 100%; }
+    .wrap { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
+    header.top {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      backdrop-filter: blur(10px);
+      background: rgba(244, 240, 232, 0.88);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      min-height: 64px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; font-weight: 700; }
+    .brand img { width: 32px; height: 32px; }
+    .nav a.jump { color: var(--muted); text-decoration: none; font-size: 15px; }
+    .nav a.jump:hover { color: var(--ink); }
+    .nav .spacer { margin-left: auto; }
+    .hero { padding: 72px 0 36px; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: center; }
+    .kicker { letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; color: var(--brown); font-weight: 700; margin: 0 0 12px; }
+    h1 { font-size: clamp(42px, 6vw, 68px); line-height: 0.95; letter-spacing: -0.04em; margin: 0 0 16px; }
+    .lede { font-size: 20px; color: var(--muted); margin: 0 0 28px; max-width: 38em; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 42px; padding: 0 16px; border-radius: 999px;
+      text-decoration: none; font-weight: 650; border: 1px solid transparent;
+    }
+    .btn.primary { background: var(--green); color: white; }
+    .btn.ghost { background: transparent; color: var(--green-ink); border-color: #c9d7d1; }
+    .hero-card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .hero-card img.shot { border-radius: 16px; display: block; border: 1px solid var(--line); }
+    .caption { color: var(--muted); font-size: 13px; margin: 12px 4px 0; }
+    section { padding: 28px 0 10px; }
+    h2 { font-size: 32px; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .section-lead { color: var(--muted); margin: 0 0 22px; max-width: 46em; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid.two { grid-template-columns: 1fr 1fr; }
+    article.card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px 18px 8px;
+    }
+    article.card h3 { margin: 0 0 8px; font-size: 18px; }
+    article.card ul { margin: 0; padding: 0 0 8px 18px; }
+    article.card li { margin: 0 0 6px; }
+    .wide { grid-column: 1 / -1; }
+    .mark { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 8px; }
+    code, .path {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.92em;
+      background: #efe8dc;
+      padding: 0 5px;
+      border-radius: 5px;
+    }
+    .install {
+      margin: 36px 0 10px;
+      background: var(--green-ink);
+      color: #f4f0e8;
+      border-radius: 24px;
+      padding: 28px;
+    }
+    .install a { color: #d7efe6; }
+    .install h2 { margin-top: 0; }
+    .install p { color: #d9d3c7; }
+    footer { padding: 28px 0 48px; color: var(--muted); font-size: 14px; }
+    @media (max-width: 860px) {
+      .hero, .grid, .grid.two { grid-template-columns: 1fr; }
+      .nav a.jump { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap nav">
+      <a class="brand" href="#top"><img src="logo.svg" alt="" /> Poso</a>
+      <a class="jump" href="#sessions">Sessions</a>
+      <a class="jump" href="#mail">Mail</a>
+      <a class="jump" href="#organizer">Organizer</a>
+      <a class="jump" href="#trust">On this PC</a>
+      <span class="spacer"></span>
+      <a class="jump" href="../README.md">README</a>
+      <a class="jump" href="guide.md">Guide</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="wrap hero">
+      <div>
+        <p class="kicker">Poso · post, in Sesotho</p>
+        <h1>All your inboxes. Neatly kept apart.</h1>
+        <p class="lede">A Windows mail client that puts work addresses and personal addresses in separate sessions. Search, spam, rules, and the From menu stay inside the session you picked. The mail itself stays on this computer.</p>
+        <div class="actions">
+          <a class="btn primary" href="#features">Every feature</a>
+          <a class="btn ghost" href="guide.md">Read the guide</a>
+        </div>
+      </div>
+      <div class="hero-card">
+        <img class="shot" src="session-demo.png" alt="Poso open on the Business session, with the Q4 forecast message in the reading pane" />
+        <p class="caption">Business session. A colored bar on each row shows which address received the mail.</p>
+      </div>
+    </div>
+
+    <section id="sessions">
+      <div class="wrap">
+        <h2>Sessions, not one mixed inbox</h2>
+        <p class="section-lead">A session is a workspace. The first launch creates two empty ones, Business and Personal. You name them, add more, and put each account in one session. Switching sessions swaps the whole window.</p>
+        <div class="grid">
+          <article class="card">
+            <h3><span class="mark" style="background:#0e6b52"></span>Work and home</h3>
+            <ul>
+              <li>Business addresses stay out of the personal inbox, and the other way around.</li>
+              <li>Switch from the header, or with <code>Ctrl+1</code> through <code>Ctrl+9</code>.</li>
+              <li>Move an account to another session from Settings.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><span class="mark" style="background:#1d4e89"></span>What stays inside</h3>
+            <ul>
+              <li>Inbox, folders, search, spam, rules, and labels.</li>
+              <li>The compose From menu only lists addresses in the active session.</li>
+              <li>Calendar, contacts, to-dos, notes, and reminders belong to that session too.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><span class="mark" style="background:#8d4a32"></span>First run</h3>
+            <ul>
+              <li>Name the sessions, then connect a real address.</li>
+              <li>Nothing syncs until an account is connected.</li>
+              <li>Sample mail is optional. Remove it later without touching real accounts or their audit history.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>Features</h2>
+        <p class="section-lead">Poso is the window. A local engine stores the mailbox, syncs over IMAP, and sends over SMTP. Gmail and Outlook can sign in through the browser.</p>
+        <div class="grid">
+          <article class="card">
+            <h3>Layout</h3>
+            <ul>
+              <li>Header with the session switcher, search, and settings.</li>
+              <li>Sidebar for folders, labels, and accounts.</li>
+              <li>Reading pane on the right, along the bottom, or off.</li>
+              <li>Light and dark themes, seven accents, comfortable or compact density.</li>
+              <li>Footer with engine state, last sync, and version.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Accounts</h3>
+            <ul>
+              <li>Gmail, Outlook / Microsoft 365, Yahoo, iCloud, or any IMAP server.</li>
+              <li>Google and Microsoft sign-in opens in the browser, with PKCE and XOAUTH2.</li>
+              <li>Other providers use an app password.</li>
+              <li>Passwords and refresh tokens go to Windows Credential Manager, not the audit log.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Reading</h3>
+            <ul>
+              <li>Conversation view.</li>
+              <li>The sender’s HTML and CSS render in a sandboxed frame.</li>
+              <li>Inline <code>cid:</code> images. Remote images stay blocked until you allow them.</li>
+              <li>Attachment cards, plain-text toggle, full headers, print, and save as <code>.eml</code>.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Organising</h3>
+            <ul>
+              <li>Labels across every account in the session.</li>
+              <li>Flag, pin to the top, snooze, archive, and move.</li>
+              <li>Bulk select, with hover actions.</li>
+              <li>Undo after archive or delete.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Search</h3>
+            <ul>
+              <li>Full text across the session, or limited to the open folder.</li>
+              <li><code>from:</code> <code>to:</code> <code>subject:</code> <code>label:</code> <code>account:</code></li>
+              <li><code>in:</code> <code>has:attachment</code> <code>is:unread</code> <code>is:flagged</code></li>
+              <li><code>before:</code> <code>after:</code> <code>newer:7d</code> <code>older:1m</code></li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Writing</h3>
+            <ul>
+              <li>Rich text, per-account HTML signatures, and contact autocomplete.</li>
+              <li>Cc, Bcc, drag-and-drop attachments, and inline images.</li>
+              <li>High priority and read receipts.</li>
+              <li>Undo send, scheduled send, and drafts that save themselves.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Rules</h3>
+            <ul>
+              <li>Conditions on From, To, Cc, subject, body, or the receiving account.</li>
+              <li>Actions: label, mark read, flag, archive, spam, or delete.</li>
+              <li>Rules run on new mail, and on the inbox when you ask.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Spam</h3>
+            <ul>
+              <li>The provider junk folder joins the session spam queue.</li>
+              <li>Spam blocklists the sender. Not spam allowlists them and trains the filter.</li>
+              <li>A local Bayesian filter files high-scoring mail, with Undo.</li>
+              <li>Allowlisted senders are not auto-filed.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Shortcuts</h3>
+            <ul>
+              <li><code>Ctrl+K</code> command palette. <code>?</code> lists every shortcut.</li>
+              <li><code>C</code> compose, <code>R</code> reply, <code>A</code> reply all, <code>F</code> forward.</li>
+              <li><code>E</code> archive, <code>#</code> delete, <code>S</code> flag, <code>!</code> spam.</li>
+              <li><code>J</code> and <code>K</code> move through the list. <code>Ctrl+Enter</code> sends.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="mail">
+      <div class="wrap">
+        <h2>Your mail, and a record of what changed</h2>
+        <div class="grid two">
+          <article class="card">
+            <h3>Import and export</h3>
+            <ul>
+              <li>Export MBOX, a zip of EML files, a JSON backup, or a contacts CSV.</li>
+              <li>The backup includes mail, labels, rules, signatures, and block lists.</li>
+              <li>Import <code>.eml</code>, <code>.mbox</code>, and zips of <code>.eml</code>, including Thunderbird, Apple Mail, and Google Takeout.</li>
+              <li>Importing the same file again does not duplicate it. An IMAP account can also upload the import to the server.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Audit log</h3>
+            <ul>
+              <li>An append-only log of sign-ins, sends, moves, deletes, spam decisions, rules, imports, exports, and settings changes.</li>
+              <li>Filter by text, event type, session, and date.</li>
+              <li>Export the log as CSV or JSON.</li>
+              <li>Passwords are never written into it. Removing sample mail deletes only the sample rows and does not add a new event.</li>
+            </ul>
+          </article>
+          <article class="card wide">
+            <h3>Notifications</h3>
+            <ul>
+              <li>Native Windows notifications for new mail, reminders, event alerts, and due to-dos, with the Poso logo.</li>
+              <li>Clicking a notification opens that item.</li>
+              <li>Alerts that come due while Poso is closed appear on the next launch.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="organizer">
+      <div class="wrap">
+        <h2>Organizer, per session</h2>
+        <p class="section-lead">Switch with <code>Alt+1</code> through <code>Alt+6</code>. Each tool belongs to the session you are in.</p>
+        <div class="grid">
+          <article class="card">
+            <h3>Calendar</h3>
+            <ul>
+              <li>Month grid and agenda.</li>
+              <li>Event alerts, including ones that were due while the app was closed.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Contacts</h3>
+            <ul>
+              <li>Collected from mail you already have.</li>
+              <li>They feed compose autocomplete.</li>
+              <li>Import and export as CSV.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>To Do</h3>
+            <ul>
+              <li>My Day, Important, and Planned.</li>
+              <li>Due-time alerts.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Notes</h3>
+            <ul>
+              <li>Autosave.</li>
+              <li>Pin the ones you want at the top.</li>
+              <li>Color them.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Reminders</h3>
+            <ul>
+              <li>A time, a repeat, and snooze.</li>
+              <li>They notify with the same Poso icon as new mail.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Snooze and scheduled send</h3>
+            <ul>
+              <li>Snooze hides a conversation until the time you chose, then returns it unread.</li>
+              <li>Scheduled messages wait in Scheduled. Opening one lets you edit it before it sends.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="trust">
+      <div class="wrap">
+        <h2>It runs on the computer you are using</h2>
+        <div class="grid two">
+          <article class="card">
+            <h3>Where things live</h3>
+            <ul>
+              <li>The window is Electron. The engine is FastAPI on <code>127.0.0.1</code>.</li>
+              <li>The mailbox is SQLite at <span class="path">%APPDATA%\Session\mail.db</span>.</li>
+              <li>Passwords and tokens use Credential Manager, service name <span class="path">SessionMail</span>.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Sample mail</h3>
+            <ul>
+              <li><strong>Explore with sample mail</strong> adds five local addresses so the window can be tried without a server.</li>
+              <li>They do not send or receive real mail.</li>
+              <li>Settings → Accounts → Sample mail removes them, their messages, unused sample labels, and only their audit rows.</li>
+            </ul>
+          </article>
+        </div>
+        <div class="install" id="install">
+          <h2>Run it</h2>
+          <p>From a clone of this repository:</p>
+          <p><span class="path">.\scripts\dev.ps1</span> opens the engine and the UI at <span class="path">http://localhost:1420</span>.</p>
+          <p><span class="path">cd desktop; npm run pack</span> writes the installer to <span class="path">desktop\release-poso\Poso Setup 1.0.0.exe</span>. That file is a build output. It is not stored in git.</p>
+          <p>Setup, sign-in, spam, and shortcuts are in the <a href="guide.md">guide</a>. Development commands are in the <a href="../README.md">README</a>.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Poso. MIT license. Copyright 2026 Khotso Tsoaela.</div>
+  </footer>
+</body>
+</html>

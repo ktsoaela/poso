@@ -104,4 +104,6 @@ npm run tauri dev
 
 ## Windows installer
 
-`.\scripts\build-windows.ps1` freezes the engine with PyInstaller in onedir mode, builds the Rust launcher Tauri ships as a sidecar, and runs `npm run tauri build`. The NSIS installer is written under `desktop\src-tauri\target\release\bundle\nsis`. The packaged app starts the engine itself and does not use the dev token.
+From `desktop`, `npm run pack` builds the Electron installer with electron-builder. The file is `desktop\release-poso\Poso Setup 1.0.0.exe`. It is build output and is not committed. The older `desktop\release` folder was the Session-named build and is not used.
+
+`.\scripts\build-windows.ps1` is the optional Tauri path. It freezes the engine with PyInstaller, builds the Rust launcher, and runs `npm run tauri build`. That NSIS installer, when the build finishes, is under `desktop\src-tauri\target\release\bundle\nsis`. The app you install from `Poso Setup 1.0.0.exe` is the Electron build.

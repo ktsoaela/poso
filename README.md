@@ -7,6 +7,7 @@
 
   <p>
     <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-375348?style=flat-square" /></a>
+    <a href="docs/index.html"><img alt="Features" src="https://img.shields.io/badge/features-landing%20page-0e6b52?style=flat-square" /></a>
     <a href="docs/guide.md"><img alt="Docs" src="https://img.shields.io/badge/docs-guide-547f72?style=flat-square" /></a>
     <img alt="Stack" src="https://img.shields.io/badge/Electron-FastAPI-436659?style=flat-square" />
   </p>
@@ -19,6 +20,8 @@
 **Poso** — post, in Sesotho — is a Windows mail client with a quiet three-pane window. One click swaps the whole workspace between work addresses and personal addresses. Search, spam, and the compose From menu stay inside the session you picked.
 
 Mail is synced over IMAP and sent over SMTP, including Gmail and Outlook accounts that sign in through the browser. The UI runs in an Electron window. A FastAPI engine on your machine stores mail in SQLite and keeps passwords in Windows Credential Manager.
+
+The feature page for GitHub is [`docs/index.html`](docs/index.html). Publish it by setting GitHub Pages to the `docs` folder on the default branch. The same page is the full feature list: sessions, mail, search, rules, spam, import and export, the audit log, and the organizer.
 
 ![Business session with sample mail](docs/session-demo.png)
 
@@ -62,7 +65,7 @@ The script opens the engine in another window and serves the UI at http://localh
 | Run Poso | `.\scripts\dev.ps1` → http://localhost:1420 |
 | Engine tests | `cd engine; .\.venv\Scripts\python.exe -m pytest` |
 | Desktop window | `.\scripts\electron.ps1` |
-| Windows installer | `.\scripts\build-windows.ps1` |
+| Windows installer | `cd desktop; npm run pack` → `desktop\release-poso\Poso Setup 1.0.0.exe` |
 
 ## Layout
 
@@ -70,6 +73,7 @@ The script opens the engine in another window and serves the UI at http://localh
 | --- | --- |
 | `engine/` | FastAPI mail engine: accounts, IMAP sync, SMTP, search, spam |
 | `desktop/` | Electron shell and React UI |
+| `docs/index.html` | GitHub Pages landing page: every feature |
 | `docs/guide.md` | Sessions, sign-in, spam, shortcuts, and the installer |
 | `scripts/` | Dev server, sidecar launcher, and Windows build |
 
@@ -89,6 +93,7 @@ The script opens the engine in another window and serves the UI at http://localh
 
 | Doc | Purpose |
 | --- | --- |
+| [Landing page](docs/index.html) | Feature page for GitHub Pages (`docs` folder) |
 | [Guide](docs/guide.md) | Accounts, OAuth redirect, spam, shortcuts, and the Windows build |
 
 ---
