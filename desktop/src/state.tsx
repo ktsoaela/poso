@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, ApiError, connectEngine, post, socketUrl } from "./api";
+import { appInBackground, notify, onNotificationClick } from "./desktop";
 import { forwardHtml, groupThreads, quoteHtml, replyAllTo, subjectWith, textToHtml } from "./format";
 import type {
   Account,
@@ -50,10 +51,27 @@ export type SettingsTab =
   | "audit"
   | "about";
 
+export type AppView = "mail" | "calendar" | "people" | "tasks" | "notes" | "reminders";
+export const APP_VIEWS: AppView[] = ["mail", "calendar", "people", "tasks", "notes", "reminders"];
+
+/** An organizer item to open when its screen shows (from a notification click, palette, etc.). */
+export interface FocusTarget {
+  view: AppView;
+  id: number;
+}
+
+/** Fired on `window` when the engine reports contacts/events/tasks/notes/reminders changed. */
+export const ORGANIZER_EVENT = "session:organizer";
+
 const LEAVES_VIEW: BulkAction[] = ["archive", "trash", "inbox", "spam", "not_spam", "delete_forever"];
 const PAGE = 300;
 
 interface MailValue {
+  view: AppView;
+  setView: (view: AppView) => void;
+  focus: FocusTarget | null;
+  openItem: (target: FocusTarget) => void;
+  clearFocus: () => void;
   loading: boolean;
   error: string;
   connected: boolean;
@@ -209,6 +227,12 @@ export function MailProvider({ children }: { children: ReactNode }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [tick, setTick] = useState(0);
+  const [view, setViewState] = useState<AppView>(() => {
+    const saved = localStorage.getItem("session.view") as AppView | null;
+    return saved && APP_VIEWS.includes(saved) ? saved : "mail";
+  });
+  const [focus, setFocus] = useState<FocusTarget | null>(null);
+  const openTagRef = useRef<(tag: string) => void>(() => undefined);
   const bootRef = useRef<Bootstrap | null>(null);
   bootRef.current = boot;
 
@@ -221,6 +245,21 @@ export function MailProvider({ children }: { children: ReactNode }) {
     setToasts((current) => [...current.slice(-3), { id, text, ...options }]);
     window.setTimeout(() => setToasts((current) => current.filter((item) => item.id !== id)), options.ttl ?? 6000);
   }, []);
+
+  const setView = useCallback((next: AppView) => {
+    setViewState(next);
+    localStorage.setItem("session.view", next);
+  }, []);
+
+  const openItem = useCallback(
+    (target: FocusTarget) => {
+      setView(target.view);
+      setFocus(target);
+    },
+    [setView],
+  );
+
+  const clearFocus = useCallback(() => setFocus(null), []);
 
   const run = useCallback(
     async (work: () => Promise<void>) => {
@@ -250,7 +289,7 @@ export function MailProvider({ children }: { children: ReactNode }) {
         setProviders(preset);
         setConnected(true);
       } catch (err) {
-        if (live) setError(err instanceof Error ? err.message : "Session couldn't open the mailbox.");
+        if (live) setError(err instanceof Error ? err.message : "Poso couldn't open the mailbox.");
       } finally {
         if (live) setLoading(false);
       }
@@ -362,7 +401,24 @@ export function MailProvider({ children }: { children: ReactNode }) {
           session_id?: number;
           account_id?: number;
           error?: string;
+          kind?: string;
+          id?: number;
+          title?: string;
+          body?: string;
         };
+        if (data.type === "organizer.changed") {
+          window.dispatchEvent(new CustomEvent(ORGANIZER_EVENT, { detail: data.kind }));
+        }
+        if (data.type === "reminder.due" && data.id) {
+          const view: AppView = data.kind === "event" ? "calendar" : data.kind === "task" ? "tasks" : "reminders";
+          const tag = `${view}:${data.session_id ?? 0}:${data.id}`;
+          const title = data.title || "Reminder";
+          void notify({ title, body: data.body || "", tag, urgent: data.kind === "reminder" });
+          toast(`${data.kind === "event" ? "Coming up" : data.kind === "task" ? "Due now" : "Reminder"}: ${title}`, {
+            ttl: 12000,
+            action: { label: "Open", run: () => openTagRef.current(tag) },
+          });
+        }
         if (data.type === "sync.start" && data.account_id) {
           setSyncingAccounts((current) => new Set(current).add(data.account_id as number));
         }
@@ -377,9 +433,14 @@ export function MailProvider({ children }: { children: ReactNode }) {
         if (data.type === "mail.new" || data.type === "mail.sent") {
           refresh();
           const settings = bootRef.current?.settings;
-          if (data.type === "mail.new" && settings?.notify && document.hidden && "Notification" in window && Notification.permission === "granted") {
+          if (data.type === "mail.new" && settings?.notify && appInBackground()) {
             const count = data.message_ids?.length ?? 1;
-            new Notification(count > 1 ? `${count} new messages` : "New message", { body: data.subject || "Session has new mail", silent: false });
+            const first = data.message_ids?.[0];
+            void notify({
+              title: count > 1 ? `${count} new messages` : "New message",
+              body: data.subject || "Poso has new mail",
+              tag: count === 1 && first ? `mail:${data.session_id ?? 0}:${first}` : `mail:${data.session_id ?? 0}:0`,
+            });
           }
           if (data.type === "mail.sent") toast(`Scheduled message sent: ${data.subject || "(no subject)"}`, { tone: "success" });
         }
@@ -509,18 +570,23 @@ export function MailProvider({ children }: { children: ReactNode }) {
 
   const setMailbox = useCallback((next: Mailbox) => {
     setMailboxState(next);
+    setView("mail");
     setSelectedId(null);
     setCheckedState(new Set());
     setLimit(PAGE);
     setQueryState("");
     setDebounced("");
     setQuickState("all");
-  }, []);
+  }, [setView]);
 
-  const setQuery = useCallback((value: string) => {
-    setQueryState(value);
-    setCheckedState(new Set());
-  }, []);
+  const setQuery = useCallback(
+    (value: string) => {
+      setQueryState(value);
+      setCheckedState(new Set());
+      if (value.trim()) setView("mail");
+    },
+    [setView],
+  );
 
   const setQuick = useCallback((value: QuickFilter) => {
     setQuickState(value);
@@ -540,6 +606,30 @@ export function MailProvider({ children }: { children: ReactNode }) {
     setPaletteOpen(false);
     setLimit(PAGE);
   }, []);
+
+  // Notification clicks land here as "<view>:<session id>:<item id>".
+  const openTag = useCallback(
+    async (tag: string) => {
+      const [kind, sessionText, idText] = tag.split(":");
+      const sessionId = Number(sessionText);
+      const id = Number(idText);
+      if (!APP_VIEWS.includes(kind as AppView)) return;
+      if (sessionId && bootRef.current && sessionId !== bootRef.current.active_session_id) {
+        await switchSession(sessionId).catch(() => undefined);
+      }
+      if (kind === "mail") {
+        setView("mail");
+        if (id) setSelectedId(id);
+        return;
+      }
+      if (id) openItem({ view: kind as AppView, id });
+      else setView(kind as AppView);
+    },
+    [switchSession, setView, openItem],
+  );
+  openTagRef.current = (tag) => void openTag(tag);
+
+  useEffect(() => onNotificationClick((tag) => openTagRef.current(tag)), []);
 
   const moveSelection = useCallback(
     (delta: number) => {
@@ -958,6 +1048,11 @@ export function MailProvider({ children }: { children: ReactNode }) {
   );
 
   const value: MailValue = {
+    view,
+    setView,
+    focus,
+    openItem,
+    clearFocus,
     loading,
     error,
     connected,

@@ -5,6 +5,7 @@ import contextlib
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from datetime import datetime
 
@@ -12,7 +13,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 
-from session_mail import __version__, features, transfer
+from session_mail import __version__, features, organizer, transfer
 from session_mail import audit as audit_log
 from session_mail.db import session_scope
 
@@ -32,12 +33,14 @@ from session_mail.schemas import (
     MessageLabels,
     MoveRequest,
     OAuthStart,
+    OrganizerItem,
     PinRequest,
     RuleIn,
     SendRequest,
     SessionCreate,
     SessionUpdate,
     SettingsUpdate,
+    SnoozeMinutes,
     SnoozeRequest,
 )
 from session_mail.services import (
@@ -71,13 +74,14 @@ from session_mail.sync.runner import sync_account
 from session_mail.sync.worker import SyncManager
 
 log = logging.getLogger("session")
+Kind = Literal["people", "events", "tasks", "notes", "reminders"]
 _settings = None
 
 
 async def _scheduler(stop: asyncio.Event) -> None:
-    """Sends scheduled mail and wakes snoozed messages."""
+    """Sends scheduled mail, wakes snoozed messages and fires reminders."""
     while not stop.is_set():
-        for job in (features.flush_outbox, features.wake_snoozed):
+        for job in (features.flush_outbox, features.wake_snoozed, organizer.fire_when_listening):
             try:
                 await asyncio.to_thread(job)
             except Exception:
@@ -129,7 +133,7 @@ def create_app() -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-    app = FastAPI(title="Session", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Poso", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.add_middleware(
         CORSMiddleware,
@@ -443,6 +447,47 @@ def create_app() -> FastAPI:
     @app.post("/api/restore")
     async def restore_data(file: UploadFile = File(...), _auth: None = Depends(require_bearer)) -> dict:
         return await call(transfer.restore_backup, await file.read())
+
+    # ----- organizer: contacts, calendar, to-do, notes, reminders -----
+    def organizer_kind(kind: str) -> str:
+        # /api/contacts already serves mail-history autocomplete, so the address book lives at /api/people.
+        return "contacts" if kind == "people" else kind
+
+    @app.get("/api/organizer/upcoming")
+    async def get_upcoming(session_id: int, hours: int = 24, _auth: None = Depends(require_bearer)) -> dict:
+        return await call(organizer.upcoming, session_id, hours)
+
+    @app.post("/api/reminders/{item_id}/snooze")
+    async def post_reminder_snooze(item_id: int, body: SnoozeMinutes, _auth: None = Depends(require_bearer)) -> dict:
+        return await call(organizer.snooze_reminder, item_id, body.minutes)
+
+    @app.get("/api/{kind}")
+    async def get_items(
+        kind: Kind,
+        session_id: int,
+        q: str = "",
+        start: datetime | None = None,
+        end: datetime | None = None,
+        _auth: None = Depends(require_bearer),
+    ) -> dict:
+        return await call(organizer.list_items, organizer_kind(kind), session_id, q, start, end)
+
+    @app.post("/api/{kind}")
+    async def post_item(kind: Kind, body: OrganizerItem, _auth: None = Depends(require_bearer)) -> dict:
+        if body.session_id is None:
+            raise HTTPException(status_code=422, detail="session_id is required")
+        data = body.model_dump(exclude_unset=True, exclude={"session_id"})
+        return await call(organizer.create_item, organizer_kind(kind), body.session_id, data)
+
+    @app.patch("/api/{kind}/{item_id}")
+    async def patch_item(kind: Kind, item_id: int, body: OrganizerItem, _auth: None = Depends(require_bearer)) -> dict:
+        data = body.model_dump(exclude_unset=True, exclude={"session_id"})
+        return await call(organizer.update_item, organizer_kind(kind), item_id, data)
+
+    @app.delete("/api/{kind}/{item_id}")
+    async def remove_item(kind: Kind, item_id: int, _auth: None = Depends(require_bearer)) -> dict:
+        await call(organizer.delete_item, organizer_kind(kind), item_id)
+        return {"ok": True}
 
     @app.websocket("/ws")
     async def socket(websocket: WebSocket, token: str = "") -> None:

@@ -1,6 +1,6 @@
 # Guide
 
-Session is a local mail client. The window talks to a FastAPI engine on `127.0.0.1`.
+Poso is a local mail client. The name means post in Sesotho. The window talks to a FastAPI engine on `127.0.0.1`.
 
 ## Sessions
 
@@ -24,7 +24,7 @@ Create an OAuth client and paste the id into Settings. The redirect URI for both
 http://127.0.0.1:8734/callback
 ```
 
-Google needs the scope `https://mail.google.com/` and offline access. Microsoft needs `IMAP.AccessAsUser.All`, `SMTP.Send`, and `offline_access`. Session uses PKCE. A client secret is optional for a public desktop client and required for a confidential one. Save it in Settings if the provider issued one. It is kept in Credential Manager, not in the database.
+Google needs the scope `https://mail.google.com/` and offline access. Microsoft needs `IMAP.AccessAsUser.All`, `SMTP.Send`, and `offline_access`. Poso uses PKCE. A client secret is optional for a public desktop client and required for a confidential one. Save it in Settings if the provider issued one. It is kept in Credential Manager, not in the database.
 
 Sign-in opens the system browser. The engine listens on port `8734` until the provider redirects back, then connects with XOAUTH2.
 
@@ -76,7 +76,7 @@ Snooze hides a conversation until the chosen time. When the time passes it comes
 
 Settings → Import & export writes MBOX, a zip of EML files, a JSON backup (mail, labels, rules, signatures, block lists), or a contacts CSV. Imports accept `.eml`, `.mbox`, and `.zip`. Re-importing the same file does not create duplicates. For IMAP accounts the import can also be uploaded to the server.
 
-Settings → Audit log lists every change Session makes. You can filter by text, event type, session, and date, and export the log as CSV or JSON.
+Settings → Audit log lists every change Poso makes. You can filter by text, event type, session, and date, and export the log as CSV or JSON.
 
 ## Develop
 

@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Session window",
+  "description": "Poso window",
   "windows": ["main"],
   "permissions": [
     "core:default",

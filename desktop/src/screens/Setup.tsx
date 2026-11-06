@@ -18,7 +18,7 @@ export function Setup() {
               <rect x="4" y="7" width="24" height="18" rx="4.5" fill="none" stroke="currentColor" strokeWidth="2.6" />
             </svg>
           </span>
-          <span className="brand-word">Session</span>
+          <span className="brand-word">Poso</span>
         </div>
         <h1>All your inboxes. Neatly kept apart.</h1>
         <p>

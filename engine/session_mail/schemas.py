@@ -152,3 +152,35 @@ class RuleIn(BaseModel):
 class EmptyRequest(BaseModel):
     session_id: int
     role: str
+
+
+class OrganizerItem(BaseModel):
+    """One shape for contacts, events, tasks, notes and reminders; each kind keeps only its own fields."""
+
+    session_id: int | None = None
+    name: str | None = Field(default=None, max_length=200)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=80)
+    company: str | None = Field(default=None, max_length=200)
+    title: str | None = Field(default=None, max_length=300)
+    address: str | None = None
+    birthday: str | None = Field(default=None, max_length=10)
+    notes: str | None = None
+    favorite: bool | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    all_day: bool | None = None
+    location: str | None = Field(default=None, max_length=300)
+    color: str | None = Field(default=None, max_length=32)
+    remind_minutes: int | None = None
+    due_at: datetime | None = None
+    important: bool | None = None
+    done: bool | None = None
+    body: str | None = None
+    pinned: bool | None = None
+    remind_at: datetime | None = None
+    repeat: str | None = None
+
+
+class SnoozeMinutes(BaseModel):
+    minutes: int = Field(default=10, ge=1, le=60 * 24 * 30)

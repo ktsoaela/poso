@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "electron": "electron .",
+    "pack": "electron-builder --win",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -26,7 +27,44 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
     "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.3"
+  },
+  "build": {
+    "appId": "app.poso.mail",
+    "productName": "Poso",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
+    "win": {
+      "icon": "electron/icon.ico",
+      "target": [
+        "dir",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Poso",
+      "uninstallDisplayName": "Poso",
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "installerIcon": "electron/icon.ico",
+      "uninstallerIcon": "electron/icon.ico",
+      "installerHeaderIcon": "electron/icon.ico"
+    }
   }
 }

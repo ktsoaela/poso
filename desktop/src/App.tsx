@@ -8,7 +8,12 @@ import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
 import { Setup } from "./screens/Setup";
 import { Settings } from "./screens/Settings";
-import { MailProvider, useMail } from "./state";
+import { CalendarView } from "./screens/organizer/Calendar";
+import { NotesView } from "./screens/organizer/Notes";
+import { PeopleView } from "./screens/organizer/People";
+import { RemindersView } from "./screens/organizer/Reminders";
+import { TasksView } from "./screens/organizer/Tasks";
+import { APP_VIEWS, MailProvider, useMail } from "./state";
 
 function useShortcuts() {
   const mail = useMail();
@@ -38,6 +43,11 @@ function useShortcuts() {
         return;
       }
       if (!mail.boot) return;
+      if (event.altKey && !mod && /^[1-6]$/.test(key)) {
+        event.preventDefault();
+        mail.setView(APP_VIEWS[Number(key) - 1]);
+        return;
+      }
       if (mod && /^[1-9]$/.test(key)) {
         const session = mail.boot.sessions[Number(key) - 1];
         if (session) {
@@ -49,6 +59,10 @@ function useShortcuts() {
       if (mod && key.toLowerCase() === "p" && mail.detail && !typing) {
         event.preventDefault();
         import("./format").then(({ printMessage }) => mail.detail && printMessage(mail.detail));
+        return;
+      }
+      if (mail.view !== "mail") {
+        if (!typing && !mod && !event.altKey && key === "?") mail.setHelpOpen(true);
         return;
       }
       if (typing || mod || event.altKey || mail.compose || mail.paletteOpen || mail.settingsOpen || mail.helpOpen) return;
@@ -130,16 +144,26 @@ function Workspace() {
       <Topbar />
       <div className={`workspace${collapsed ? " sidebar-collapsed" : ""}`}>
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
-        <main className={`mail-area pane-${pane}${pane === "off" && reading ? " reading" : ""}`}>
-          {pane === "off" ? (
-            reading ? <Reader onBack={() => mail.select(null)} /> : <MessageList />
-          ) : (
-            <>
-              <MessageList />
-              <Reader />
-            </>
-          )}
-        </main>
+        {mail.view === "mail" ? (
+          <main className={`mail-area pane-${pane}${pane === "off" && reading ? " reading" : ""}`}>
+            {pane === "off" ? (
+              reading ? <Reader onBack={() => mail.select(null)} /> : <MessageList />
+            ) : (
+              <>
+                <MessageList />
+                <Reader />
+              </>
+            )}
+          </main>
+        ) : (
+          <main className="org-area">
+            {mail.view === "calendar" ? <CalendarView /> : null}
+            {mail.view === "people" ? <PeopleView /> : null}
+            {mail.view === "tasks" ? <TasksView /> : null}
+            {mail.view === "notes" ? <NotesView /> : null}
+            {mail.view === "reminders" ? <RemindersView /> : null}
+          </main>
+        )}
       </div>
       <StatusBar />
       <Composer />
@@ -153,7 +177,7 @@ function Shell() {
     return (
       <div className="boot">
         <span className="spinner" />
-        <p>Opening Session…</p>
+        <p>Opening Poso…</p>
       </div>
     );
   }

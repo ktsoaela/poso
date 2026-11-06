@@ -62,7 +62,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   } catch {
-    throw new ApiError(0, "Session can't reach the mail engine.");
+    throw new ApiError(0, "Poso can't reach the mail engine.");
   }
   if (!response.ok) throw await errorFrom(response);
   if (response.status === 204) return undefined as T;

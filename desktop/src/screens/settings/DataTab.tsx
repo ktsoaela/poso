@@ -7,7 +7,7 @@ import { useMail } from "../../state";
 const FORMATS: { id: string; label: string; detail: string; icon: LucideIcon }[] = [
   { id: "mbox", label: "MBOX", detail: "One file. Opens in Thunderbird, Apple Mail, and most clients.", icon: Mail },
   { id: "eml", label: "EML (zip)", detail: "One .eml per message, organised by account and folder. Outlook can open these.", icon: FileArchive },
-  { id: "json", label: "Session backup (JSON)", detail: "Mail, labels, rules, signatures, and block lists. Restorable below.", icon: DatabaseBackup },
+  { id: "json", label: "Poso backup (JSON)", detail: "Mail, labels, rules, signatures, and block lists. Restorable below.", icon: DatabaseBackup },
   { id: "contacts", label: "Contacts (CSV)", detail: "Everyone you've written to or heard from in this session.", icon: Users },
 ];
 
@@ -194,7 +194,7 @@ export function DataTab() {
 
       <section className="set-section">
         <div className="set-section-head">
-          <h3>Restore a Session backup</h3>
+          <h3>Restore a Poso backup</h3>
           <p>Restores labels, rules, block lists, signatures, and mail for accounts that already exist here. Nothing is overwritten.</p>
         </div>
         <div className="form-actions start">

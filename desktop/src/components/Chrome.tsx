@@ -22,10 +22,15 @@ import {
   Wifi,
   WifiOff,
   X,
+  BellRing,
+  CalendarDays,
+  CheckSquare,
+  Contact,
+  NotebookPen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { relative } from "../format";
-import { useMail } from "../state";
+import { useMail, type AppView } from "../state";
 import { Kbd, Modal } from "./ui";
 
 const UI_VERSION = __APP_VERSION__;
@@ -64,7 +69,7 @@ export function StatusBar() {
         <Keyboard size={13} /> Shortcuts <Kbd>?</Kbd>
       </button>
       <button type="button" className="status-item muted" onClick={() => openSettings("about")} title={`Engine ${boot.version} · UI ${UI_VERSION}`}>
-        Session v{UI_VERSION}
+        Poso v{UI_VERSION}
       </button>
     </footer>
   );
@@ -80,7 +85,7 @@ interface PaletteItem {
 }
 
 export function CommandPalette() {
-  const { paletteOpen, setPaletteOpen, boot, sessionAccounts, sessionLabels, switchSession, setMailbox, openCompose, openSettings, saveSettings, syncNow, setQuery, setHelpOpen } = useMail();
+  const { paletteOpen, setPaletteOpen, setView, boot, sessionAccounts, sessionLabels, switchSession, setMailbox, openCompose, openSettings, saveSettings, syncNow, setQuery, setHelpOpen } = useMail();
   const [filter, setFilter] = useState("");
   const [cursor, setCursor] = useState(0);
 
@@ -98,6 +103,20 @@ export function CommandPalette() {
         icon: Layers,
         hint: index < 9 ? `Ctrl ${index + 1}` : undefined,
         run: () => void switchSession(session.id),
+      })),
+      ...([
+        ["calendar", "Calendar", CalendarDays],
+        ["people", "Contacts", Contact],
+        ["tasks", "To Do", CheckSquare],
+        ["notes", "Notes", NotebookPen],
+        ["reminders", "Reminders", BellRing],
+      ] as [AppView, string, LucideIcon][]).map(([view, label, icon], index) => ({
+        id: `app-${view}`,
+        group: "Apps",
+        label,
+        icon,
+        hint: `Alt ${index + 2}`,
+        run: () => setView(view),
       })),
       { id: "inbox", group: "Go to", label: "Inbox", icon: Inbox, run: () => setMailbox({ kind: "role", role: "inbox" }) },
       { id: "sent", group: "Go to", label: "Sent", icon: Send, run: () => setMailbox({ kind: "role", role: "sent" }) },
@@ -117,7 +136,7 @@ export function CommandPalette() {
       { id: "audit", group: "Settings", label: "Audit log", icon: History, run: () => openSettings("audit") },
     ];
     return list;
-  }, [boot, sessionAccounts, sessionLabels, switchSession, setMailbox, openCompose, openSettings, saveSettings, syncNow, setHelpOpen]);
+  }, [boot, sessionAccounts, sessionLabels, switchSession, setMailbox, setView, openCompose, openSettings, saveSettings, syncNow, setHelpOpen]);
 
   const needle = filter.trim().toLowerCase();
   const visible = items.filter((item) => item.label.toLowerCase().includes(needle) || item.group.toLowerCase().includes(needle));
@@ -204,6 +223,7 @@ const SHORTCUTS: [string, [string, string][]][] = [
       ["/", "Search"],
       ["Ctrl K", "Command palette"],
       ["Ctrl 1–9", "Switch session"],
+      ["Alt 1–6", "Mail, Calendar, Contacts, To Do, Notes, Reminders"],
       ["Esc", "Close / back"],
     ],
   ],

@@ -75,7 +75,7 @@ export function AuditTab() {
     <section className="set-section">
       <div className="set-section-head">
         <h3>Audit log</h3>
-        <p>Every change Session makes — sign-ins, sends, moves, deletes, spam decisions, rules, imports, exports, and settings — with who did it and when. Kept locally and never edited.</p>
+        <p>Every change Poso makes — sign-ins, sends, moves, deletes, spam decisions, rules, imports, exports, and settings — with who did it and when. Kept locally and never edited.</p>
       </div>
       <div className="audit-filters">
         <div className="audit-search">

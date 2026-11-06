@@ -171,7 +171,7 @@ def export_backup(session_id: int | None) -> tuple[bytes, str, str]:
         sessions = db.scalars(select(MailSession).order_by(MailSession.sort_order)).all()
         if session_id is not None:
             sessions = [row for row in sessions if row.id == session_id]
-        payload: dict = {"app": "Session", "version": BACKUP_VERSION, "exported_at": _stamp(), "sessions": []}
+        payload: dict = {"app": "Poso", "version": BACKUP_VERSION, "exported_at": _stamp(), "sessions": []}
         count = 0
         for session in sessions:
             labels = db.scalars(select(Label).where(Label.session_id == session.id)).all()
@@ -339,9 +339,9 @@ def restore_backup(data: bytes) -> dict:
     try:
         payload = json.loads(data.decode("utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise MailError("That file is not a Session backup.") from exc
-    if not isinstance(payload, dict) or payload.get("app") != "Session":
-        raise MailError("That file is not a Session backup.")
+        raise MailError("That file is not a Poso backup.") from exc
+    if not isinstance(payload, dict) or payload.get("app") not in {"Poso", "Session"}:
+        raise MailError("That file is not a Poso backup.")
     summary = {"sessions": 0, "labels": 0, "rules": 0, "messages": 0, "skipped_accounts": []}
     with session_scope() as db:
         for entry in payload.get("sessions", []):

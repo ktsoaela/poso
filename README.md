@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="docs/logo.svg" alt="Session" width="128" style="background:#ffffff;padding:16px;border-radius:12px" />
+  <img src="docs/logo.svg" alt="Poso" width="128" style="background:#ffffff;padding:16px;border-radius:12px" />
 
-  <h1>Session</h1>
+  <h1>Poso</h1>
 
   <p><strong>A desktop mail client that keeps business and personal inboxes in separate sessions.</strong></p>
 
@@ -16,7 +16,7 @@
 
 ---
 
-**Session** is a Windows mail client with a quiet three-pane window. One click swaps the whole workspace between work addresses and personal addresses. Search, spam, and the compose From menu stay inside the session you picked.
+**Poso** — post, in Sesotho — is a Windows mail client with a quiet three-pane window. One click swaps the whole workspace between work addresses and personal addresses. Search, spam, and the compose From menu stay inside the session you picked.
 
 Mail is synced over IMAP and sent over SMTP, including Gmail and Outlook accounts that sign in through the browser. The UI runs in an Electron window. A FastAPI engine on your machine stores mail in SQLite and keeps passwords in Windows Credential Manager.
 
@@ -24,7 +24,7 @@ Mail is synced over IMAP and sent over SMTP, including Gmail and Outlook account
 
 ---
 
-## Why Session
+## Why Poso
 
 - **Sessions** split business addresses (x, y, z) and personal addresses (1, 2) into workspaces. Switch from the header dropdown or with `Ctrl+1`…`Ctrl+9`.
 - **One list** shows every account in the active session. A colored bar on each row shows which address received the mail.
@@ -44,6 +44,8 @@ Mail is synced over IMAP and sent over SMTP, including Gmail and Outlook account
 | Data | Export to MBOX, EML (zip), JSON backup or contacts CSV. Import `.eml`, `.mbox` (Thunderbird, Apple Mail, Google Takeout) or zips of `.eml`. Restore backups. |
 | Audit | Append-only log of sign-ins, sends, moves, deletes, spam decisions, rules, imports, exports and settings changes, with filtering and CSV/JSON export |
 | Productivity | Command palette (`Ctrl+K`), Gmail-style shortcuts (`?` lists them), desktop notifications |
+| Organizer | Calendar (month grid, agenda, event alerts), Contacts (feed compose autocomplete, import from mail), To Do (My day / Important / Planned, due-time alerts), Notes (autosave, pin, colors) and Reminders (repeat, snooze). Each belongs to the active session. Switch with `Alt+1`…`Alt+6`. |
+| Notifications | Native Electron notifications for new mail, reminders, event alerts and due to-dos, using the Poso logo. Clicking one opens the item. Alerts that come due while Poso is closed show on the next launch. |
 
 ## Quick start
 
@@ -57,7 +59,7 @@ The script opens the engine in another window and serves the UI at http://localh
 
 | Goal | Command |
 | --- | --- |
-| Run Session | `.\scripts\dev.ps1` → http://localhost:1420 |
+| Run Poso | `.\scripts\dev.ps1` → http://localhost:1420 |
 | Engine tests | `cd engine; .\.venv\Scripts\python.exe -m pytest` |
 | Desktop window | `.\scripts\electron.ps1` |
 | Windows installer | `.\scripts\build-windows.ps1` |

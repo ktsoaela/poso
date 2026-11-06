@@ -26,6 +26,7 @@ import { AccountForm } from "./AccountForm";
 import { AuditTab } from "./settings/AuditTab";
 import { DataTab } from "./settings/DataTab";
 import { RulesTab } from "./settings/RulesTab";
+import { requestNotificationPermission } from "../desktop";
 
 const TABS: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: Palette },
@@ -130,14 +131,13 @@ function GeneralTab() {
         <Row label="Load remote images automatically" hint="Off keeps senders from seeing when you open mail.">
           <Toggle label="Load remote images" checked={s.load_remote_images} onChange={(load_remote_images) => void saveSettings({ load_remote_images })} />
         </Row>
-        <Row label="Desktop notifications" hint="Notify when new mail arrives while Session is in the background.">
+        <Row label="Desktop notifications" hint="Notify when new mail arrives while Poso is in the background. Reminders, event alerts and due to-dos always notify.">
           <Toggle
             label="Desktop notifications"
             checked={s.notify}
             onChange={async (notify) => {
-              if (notify && "Notification" in window && Notification.permission === "default") {
-                const result = await Notification.requestPermission();
-                if (result !== "granted") toast("Notifications are blocked by the system.", { tone: "error" });
+              if (notify && (await requestNotificationPermission()) !== "granted") {
+                toast("Notifications are blocked by the system.", { tone: "error" });
               }
               void saveSettings({ notify });
             }}
@@ -482,14 +482,14 @@ function SigninTab() {
 function AboutTab() {
   const { boot } = useMail();
   return (
-    <Section title="Session" description="A desktop mail client that keeps business and personal inboxes in separate sessions.">
+    <Section title="Poso" description="A desktop mail client that keeps business and personal inboxes in separate sessions. Poso means post in Sesotho.">
       <dl className="about">
         <dt>App version</dt>
         <dd>{__APP_VERSION__}</dd>
         <dt>Mail engine</dt>
         <dd>{boot?.version}</dd>
         <dt>Stack</dt>
-        <dd>Tauri 2 (Rust) · React · FastAPI · SQLite FTS5</dd>
+        <dd>Electron · React · FastAPI · SQLite FTS5</dd>
         <dt>Your data</dt>
         <dd>Stored locally in %APPDATA%\Session. Passwords and tokens live in Windows Credential Manager.</dd>
         <dt>Protocols</dt>

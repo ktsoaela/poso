@@ -330,7 +330,7 @@ export function Reader({ onBack }: { onBack?: () => void }) {
             {detail.folder_role === "spam" ? (
               <div className="banner danger">
                 <ShieldAlert size={16} />
-                <span>{detail.auto_spam ? "Session filed this as spam automatically." : "This message is in Spam."} Links and images are blocked.</span>
+                <span>{detail.auto_spam ? "Poso filed this as spam automatically." : "This message is in Spam."} Links and images are blocked.</span>
                 <button type="button" className="btn sm" onClick={() => void act("not_spam", [detail.id])}>
                   Not spam
                 </button>

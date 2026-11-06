@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlarmClock,
   AlertCircle,
+  BellRing,
+  CalendarDays,
+  CheckSquare,
+  Contact,
+  Mail,
+  NotebookPen,
   Archive,
   ChevronRight,
   Clock3,
@@ -24,7 +30,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { folderLabel } from "../format";
-import { useMail } from "../state";
+import { api } from "../api";
+import { ORGANIZER_EVENT, useMail, type AppView } from "../state";
 import type { Mailbox, RoleName } from "../types";
 import { Kbd } from "./ui";
 
@@ -40,6 +47,51 @@ const ROLES: { role: RoleName; label: string; icon: LucideIcon }[] = [
   { role: "spam", label: "Spam", icon: ShieldAlert },
   { role: "trash", label: "Trash", icon: Trash2 },
 ];
+
+const APPS: { view: AppView; label: string; icon: LucideIcon }[] = [
+  { view: "mail", label: "Mail", icon: Mail },
+  { view: "calendar", label: "Calendar", icon: CalendarDays },
+  { view: "people", label: "Contacts", icon: Contact },
+  { view: "tasks", label: "To Do", icon: CheckSquare },
+  { view: "notes", label: "Notes", icon: NotebookPen },
+  { view: "reminders", label: "Reminders", icon: BellRing },
+];
+
+interface Upcoming {
+  events: { starts_at: string; ends_at: string }[];
+  open_tasks: number;
+  reminders: { remind_at: string }[];
+}
+
+/** Badge counts for the app switcher: events left today, open to-dos, reminders that are due. */
+function useBadges(sessionId: number | null): Partial<Record<AppView, { value: number; strong?: boolean }>> {
+  const [data, setData] = useState<Upcoming | null>(null);
+  useEffect(() => {
+    if (!sessionId) return;
+    let live = true;
+    const load = () =>
+      api<Upcoming>(`/api/organizer/upcoming?session_id=${sessionId}&hours=24`)
+        .then((next) => live && setData(next))
+        .catch(() => undefined);
+    void load();
+    const timer = window.setInterval(load, 60000);
+    window.addEventListener(ORGANIZER_EVENT, load);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+      window.removeEventListener(ORGANIZER_EVENT, load);
+    };
+  }, [sessionId]);
+  if (!data) return {};
+  const now = Date.now();
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  return {
+    calendar: { value: data.events.filter((item) => new Date(item.starts_at).getTime() < midnight.getTime()).length },
+    tasks: { value: data.open_tasks },
+    reminders: { value: data.reminders.filter((item) => new Date(item.remind_at).getTime() <= now).length, strong: true },
+  };
+}
 
 function same(a: Mailbox, b: Mailbox): boolean {
   if (a.kind !== b.kind) return false;
@@ -59,11 +111,12 @@ interface NavProps {
   color?: string;
   collapsed: boolean;
   strong?: boolean;
+  title?: string;
 }
 
-function NavItem({ icon: Icon, label, count, muted, active, onClick, color, collapsed, strong }: NavProps) {
+function NavItem({ icon: Icon, label, count, muted, active, onClick, color, collapsed, strong, title }: NavProps) {
   return (
-    <button type="button" className={`nav-item${active ? " active" : ""}`} onClick={onClick} title={collapsed ? label : undefined}>
+    <button type="button" className={`nav-item${active ? " active" : ""}`} onClick={onClick} title={title ?? (collapsed ? label : undefined)}>
       {color ? <span className="nav-swatch" style={{ background: color }} /> : <Icon size={17} strokeWidth={1.9} />}
       {collapsed ? null : <span className="nav-label">{label}</span>}
       {count ? <span className={`nav-count${muted ? " muted" : ""}${strong ? " strong" : ""}`}>{count > 999 ? "999+" : count}</span> : null}
@@ -72,10 +125,11 @@ function NavItem({ icon: Icon, label, count, muted, active, onClick, color, coll
 }
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { boot, mailbox, setMailbox, sessionAccounts, sessionLabels, drafts, outbox, openCompose, openSettings, createLabel } = useMail();
+  const { boot, mailbox, setMailbox, sessionAccounts, sessionLabels, drafts, outbox, openCompose, openSettings, createLabel, view, setView } = useMail();
   const [open, setOpen] = useState<Set<number>>(new Set());
   const [adding, setAdding] = useState(false);
   const [labelName, setLabelName] = useState("");
+  const badges = useBadges(boot?.active_session_id ?? null);
   if (!boot) return null;
   const sessionKey = String(boot.active_session_id);
   const accountIds = new Set(sessionAccounts.map((account) => account.id));
@@ -103,6 +157,28 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </button>
 
       <nav className="nav-scroll" aria-label="Mailboxes">
+        <div className="nav-group app-switcher" aria-label="Apps">
+          {APPS.map((item, index) => {
+            const badge = item.view === "mail" ? { value: unread("inbox"), strong: true } : badges[item.view];
+            return (
+              <NavItem
+                key={item.view}
+                icon={item.icon}
+                label={item.label}
+                count={badge?.value}
+                strong={badge?.strong}
+                muted={!badge?.strong}
+                active={view === item.view}
+                onClick={() => setView(item.view)}
+                collapsed={collapsed}
+                title={`${item.label} (Alt+${index + 1})`}
+              />
+            );
+          })}
+        </div>
+
+        {view !== "mail" ? null : (
+        <>
         <div className="nav-group">
           {ROLES.filter((item) => item.role !== "scheduled" || outbox.length > 0).map((item) => {
             const target: Mailbox = { kind: "role", role: item.role };
@@ -249,6 +325,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           <NavItem icon={ArrowDownUp} label="Import & export" active={false} onClick={() => openSettings("data")} collapsed={collapsed} />
           <NavItem icon={History} label="Audit log" active={false} onClick={() => openSettings("audit")} collapsed={collapsed} />
         </div>
+        </>
+        )}
       </nav>
 
       <button type="button" className="collapse-btn" onClick={onToggle} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>

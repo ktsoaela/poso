@@ -371,6 +371,15 @@ def contacts(session_id: int, q: str, limit: int = 20) -> dict:
                     entry["count"] += 2  # people you write to rank higher
                     if not entry["name"]:
                         entry["name"] = item.get("name", "")
+    from session_mail.organizer import saved_contacts
+
+    for saved in saved_contacts(session_id):
+        key = saved.email.strip().lower()
+        if not key or "@" not in key or key in own:
+            continue
+        entry = found.setdefault(key, {"email": saved.email.strip(), "name": "", "count": 0, "last": None})
+        entry["name"] = saved.name or entry["name"]
+        entry["count"] += 25 if saved.favorite else 10  # address-book entries outrank one-off senders
     rows = list(found.values())
     if needle:
         rows = [row for row in rows if needle in row["email"].lower() or needle in (row["name"] or "").lower()]

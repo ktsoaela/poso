@@ -36,7 +36,20 @@ if (-not (Test-Url "http://localhost:1420")) {
     Start-Sleep -Seconds 1
     if (Test-Url "http://localhost:1420") { $up = $true; break }
   }
-  if (-not $up) { throw "The Session UI did not start." }
+  if (-not $up) { throw "The Poso UI did not start." }
+}
+$exe = Join-Path $desktop "release\win-unpacked\Poso.exe"
+$ico = Join-Path $desktop "electron\icon.ico"
+if ((Test-Path $exe) -and (Test-Path $ico)) {
+  $programs = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+  $previous = Join-Path $programs "Session.lnk"
+  if (Test-Path $previous) { Remove-Item $previous -Force }
+  $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $programs "Poso.lnk"))
+  $shortcut.TargetPath = $exe
+  $shortcut.WorkingDirectory = Split-Path $exe
+  $shortcut.IconLocation = "$exe,0"
+  $shortcut.Description = "Poso mail"
+  $shortcut.Save()
 }
 npm run electron
 Pop-Location
