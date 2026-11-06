@@ -10,7 +10,29 @@ const PROVIDER_MARKS: Record<string, { bg: string; letter: string }> = {
   custom: { bg: "#64748b", letter: "@" },
 };
 
-export function AccountForm({ defaultSessionId, onDone }: { defaultSessionId?: number; onDone?: () => void }) {
+const PASSWORD_STEPS: Record<string, string[]> = {
+  gmail: [
+    "In Gmail, open Settings → See all settings → Forwarding and POP/IMAP, and turn IMAP on.",
+    "Open myaccount.google.com/apppasswords and create an app password. Turn on 2-Step Verification first if Google asks.",
+    "Paste the Gmail address and those 16 characters below. Spaces are fine.",
+  ],
+  outlook: ["Outlook and Microsoft 365 reject a password. Go back and use Sign in with Microsoft."],
+  yahoo: ["In Yahoo Account Security, create an app password, then paste the address and that password below."],
+  icloud: ["Create an app-specific password at appleid.apple.com, then paste the address and that password below."],
+  custom: ["Enter the address and password. Open Server settings if the IMAP and SMTP hosts are empty."],
+};
+
+export function AccountForm({
+  defaultSessionId,
+  onDone,
+  part = "all",
+  onUsePassword,
+}: {
+  defaultSessionId?: number;
+  onDone?: () => void;
+  part?: "all" | "choose" | "password";
+  onUsePassword?: () => void;
+}) {
   const { boot, providers, addAccount, startOAuth } = useMail();
   const [provider, setProvider] = useState("gmail");
   const [email, setEmail] = useState("");
@@ -51,28 +73,49 @@ export function AccountForm({ defaultSessionId, onDone }: { defaultSessionId?: n
           .finally(() => setBusy(false));
       }}
     >
-      <div className="provider-grid" role="radiogroup" aria-label="Provider">
-        {providers.map((item) => {
-          const mark = PROVIDER_MARKS[item.id] ?? PROVIDER_MARKS.custom;
-          return (
-            <button key={item.id} type="button" role="radio" aria-checked={provider === item.id} className={`provider${provider === item.id ? " on" : ""}`} onClick={() => setProvider(item.id)}>
-              <span className="provider-mark" style={{ background: mark.bg }}>
-                {mark.letter}
-              </span>
-              <span>{item.label}</span>
+      {part !== "password" ? (
+        <>
+          <div className="provider-grid" role="radiogroup" aria-label="Provider">
+            {providers.map((item) => {
+              const mark = PROVIDER_MARKS[item.id] ?? PROVIDER_MARKS.custom;
+              return (
+                <button key={item.id} type="button" role="radio" aria-checked={provider === item.id} className={`provider${provider === item.id ? " on" : ""}`} onClick={() => setProvider(item.id)}>
+                  <span className="provider-mark" style={{ background: mark.bg }}>
+                    {mark.letter}
+                  </span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {preset ? <p className="hint-line">{preset.hint}</p> : null}
+          {preset?.oauth ? (
+            <button type="button" className="btn oauth" onClick={() => void startOAuth(preset.oauth as string, sessionId).then((ok) => { if (ok) onDone?.(); })}>
+              <KeyRound size={16} /> Sign in with {preset.oauth === "google" ? "Google" : "Microsoft"} in your browser
             </button>
-          );
-        })}
-      </div>
-      {preset ? <p className="hint-line">{preset.hint}</p> : null}
-
-      {preset?.oauth ? (
-        <button type="button" className="btn oauth" onClick={() => void startOAuth(preset.oauth as string, sessionId).then(() => onDone?.())}>
-          <KeyRound size={16} /> Sign in with {preset.oauth === "google" ? "Google" : "Microsoft"} in your browser
-        </button>
+          ) : part === "choose" ? (
+            <button type="button" className="btn primary" onClick={onUsePassword}>
+              Continue
+            </button>
+          ) : null}
+          {part === "choose" && preset?.oauth ? (
+            <button type="button" className="btn" onClick={onUsePassword}>
+              Use an app password instead
+            </button>
+          ) : null}
+          {part === "all" && preset?.oauth ? <div className="or-line"><span>or use an app password</span></div> : null}
+        </>
       ) : null}
-      {preset?.oauth ? <div className="or-line"><span>or use an app password</span></div> : null}
 
+      {part !== "choose" ? (
+      <>
+      {part === "password" ? (
+        <ol className="walk-help">
+          {(PASSWORD_STEPS[provider] ?? PASSWORD_STEPS.custom).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ol>
+      ) : null}
       <div className="grid-2">
         <label className="field">
           <span>Session</span>
@@ -97,7 +140,12 @@ export function AccountForm({ defaultSessionId, onDone }: { defaultSessionId?: n
         <span>
           <Lock size={12} /> {provider === "gmail" || provider === "yahoo" || provider === "icloud" ? "App password" : "Password"}
         </span>
-        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Stored in Windows Credential Manager" />
+        <input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder={provider === "gmail" || provider === "yahoo" || provider === "icloud" ? "16-character app password" : "Stored in Windows Credential Manager"}
+        />
       </label>
       <button type="button" className="link-btn" onClick={() => setAdvanced((value) => !value)}>
         <Server size={14} /> Server settings <ChevronDown size={14} className={advanced ? "flip" : ""} />
@@ -131,6 +179,8 @@ export function AccountForm({ defaultSessionId, onDone }: { defaultSessionId?: n
           {busy ? "Checking sign-in…" : "Add account"}
         </button>
       </div>
+      </>
+      ) : null}
     </form>
   );
 }

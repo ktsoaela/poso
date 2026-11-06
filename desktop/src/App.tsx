@@ -173,6 +173,7 @@ function Workspace() {
 
 function Shell() {
   const mail = useMail();
+  const [keepSetup, setKeepSetup] = useState<boolean | null>(null);
   if (mail.loading) {
     return (
       <div className="boot">
@@ -196,9 +197,13 @@ function Shell() {
       </div>
     );
   }
+  if (mail.boot && keepSetup === null) {
+    setKeepSetup(mail.boot.accounts.length === 0);
+  }
+  const showSetup = keepSetup === null ? mail.boot.accounts.length === 0 : keepSetup;
   return (
     <>
-      {mail.boot.accounts.length === 0 ? <Setup /> : <Workspace />}
+      {showSetup ? <Setup onFinish={() => setKeepSetup(false)} /> : <Workspace />}
       <Settings />
       <CommandPalette />
       <ShortcutsHelp />

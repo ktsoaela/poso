@@ -3,10 +3,18 @@ import { Briefcase, Home, Plus, Sparkles } from "lucide-react";
 import { useMail } from "../state";
 import { AccountForm } from "./AccountForm";
 
-export function Setup() {
+const STEPS = [
+  { id: 1, label: "Connect" },
+  { id: 2, label: "App password" },
+  { id: 3, label: "Sessions" },
+] as const;
+
+export function Setup({ onFinish }: { onFinish: () => void }) {
   const { boot, renameSession, seedDemo, createSession } = useMail();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [sessionName, setSessionName] = useState("");
   if (!boot) return null;
+  const connected = boot.accounts.length > 0;
 
   return (
     <div className="setup-page">
@@ -30,51 +38,95 @@ export function Setup() {
           <li>Rules, labels, snooze, scheduled send, undo send</li>
           <li>Import & export MBOX / EML / JSON, with a full audit log</li>
         </ul>
-        <button type="button" className="btn ghost-light" onClick={() => void seedDemo()}>
+        <button
+          type="button"
+          className="btn ghost-light"
+          onClick={() => {
+            void seedDemo().then((ok) => {
+              if (ok) onFinish();
+            });
+          }}
+        >
           <Sparkles size={16} /> Explore with sample mail
         </button>
       </div>
       <div className="setup-card">
-        <h2>1 · Name your sessions</h2>
-        <div className="setup-sessions">
-          {boot.sessions.map((session, index) => {
-            const Icon = index === 0 ? Briefcase : index === 1 ? Home : Plus;
-            return (
-              <label key={session.id} className="setup-session">
-                <span className="session-glyph" style={{ background: session.color }}>
-                  <Icon size={15} />
-                </span>
-                <input
-                  defaultValue={session.name}
-                  aria-label={`${session.name} name`}
-                  onBlur={(event) => {
-                    const name = event.target.value.trim();
-                    if (name && name !== session.name) void renameSession(session.id, name);
-                  }}
-                />
-              </label>
-            );
-          })}
-          <form
-            className="inline-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!sessionName.trim()) return;
-              void createSession(sessionName.trim());
-              setSessionName("");
-            }}
-          >
-            <input placeholder="Add another session" value={sessionName} onChange={(event) => setSessionName(event.target.value)} />
-            <button type="submit" className="btn sm">
-              <Plus size={14} /> Add
+        <div className="walk-progress" role="tablist" aria-label="Setup steps">
+          {STEPS.map((item) => (
+            <button key={item.id} type="button" role="tab" aria-selected={step === item.id} className={`walk-step${step === item.id ? " on" : ""}`} onClick={() => setStep(item.id)}>
+              <span>{item.id}</span>
+              {item.label}
             </button>
-          </form>
+          ))}
         </div>
-        <h2>2 · Connect a real address</h2>
-        <p className="set-hint">
-          This is the normal start. Poso opens with two empty sessions, Business and Personal. Add a Gmail, Outlook, or IMAP address here. Nothing is synced until you connect one. Sample mail is optional, stays on this computer, and can be removed later from Settings without touching a real account or its audit history.
-        </p>
-        <AccountForm />
+
+        {step === 1 ? (
+          <>
+            <h2>1 · Connect a real address</h2>
+            <p className="set-hint">Pick a provider. Gmail and Outlook can sign in in the browser. Yahoo, iCloud, and other servers continue to an app password. Nothing syncs until an account connects.</p>
+          </>
+        ) : null}
+        {step === 2 ? (
+          <>
+            <h2>2 · Use an app password</h2>
+            <p className="set-hint">This is the path when browser sign-in is not set up. Choose which session receives the address, then paste the mailbox password.</p>
+            <button type="button" className="link-btn" onClick={() => setStep(1)}>
+              Back to provider
+            </button>
+          </>
+        ) : null}
+
+        {step === 3 ? (
+          <>
+            <h2>3 · Name your sessions</h2>
+            <p className="set-hint">Business and Personal are already here. Rename them, add another, then open the inbox.</p>
+            <div className="setup-sessions">
+              {boot.sessions.map((session, index) => {
+                const Icon = index === 0 ? Briefcase : index === 1 ? Home : Plus;
+                return (
+                  <label key={session.id} className="setup-session">
+                    <span className="session-glyph" style={{ background: session.color }}>
+                      <Icon size={15} />
+                    </span>
+                    <input
+                      defaultValue={session.name}
+                      aria-label={`${session.name} name`}
+                      onBlur={(event) => {
+                        const name = event.target.value.trim();
+                        if (name && name !== session.name) void renameSession(session.id, name);
+                      }}
+                    />
+                  </label>
+                );
+              })}
+              <form
+                className="inline-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!sessionName.trim()) return;
+                  void createSession(sessionName.trim());
+                  setSessionName("");
+                }}
+              >
+                <input placeholder="Add another session" value={sessionName} onChange={(event) => setSessionName(event.target.value)} />
+                <button type="submit" className="btn sm">
+                  <Plus size={14} /> Add
+                </button>
+              </form>
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn" onClick={() => setStep(connected ? 2 : 1)}>
+                Back
+              </button>
+              <button type="button" className="btn primary" disabled={!connected} onClick={onFinish}>
+                Open inbox
+              </button>
+            </div>
+            {connected ? null : <p className="set-hint">Connect an address in step 1 or 2 before opening the inbox.</p>}
+          </>
+        ) : (
+          <AccountForm part={step === 1 ? "choose" : "password"} onUsePassword={() => setStep(2)} onDone={() => setStep(3)} />
+        )}
       </div>
     </div>
   );

@@ -105,4 +105,4 @@ The script opens the engine in another window and serves the UI at http://localh
 
 ## License
 
-MIT. Copyright 2026 Khotso Tsoaela.
+MIT. Copyright 2026 Poso.

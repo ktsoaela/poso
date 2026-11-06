@@ -465,9 +465,12 @@ function SigninTab() {
   const [microsoftSecret, setMicrosoftSecret] = useState("");
   if (!boot) return null;
   return (
-    <Section title="Browser sign-in (OAuth)" description="Needed for Outlook.com / Microsoft 365, and optional for Gmail. Register a desktop app with each provider and paste its client id here.">
+    <Section
+      title="Browser sign-in (OAuth)"
+      description="Gmail can use an app password instead. Browser sign-in needs a client id you create once. Outlook and Microsoft 365 need this; a normal password will not work."
+    >
       <p className="set-hint">
-        Redirect URI for both: <code>{boot.oauth.redirect_uri}</code>
+        Google Cloud Console → APIs &amp; Services → Credentials → Create credentials → OAuth client ID → Desktop app. Copy the client id (it ends in <code>.apps.googleusercontent.com</code>). If Google asks for a redirect URI, use <code>{boot.oauth.redirect_uri}</code>. The client secret is optional for a desktop app. Paste the id here, save, then use Sign in with Google again.
       </p>
       <div className="grid-2">
         <label className="field">

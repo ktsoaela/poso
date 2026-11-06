@@ -10,7 +10,7 @@ PRESETS: dict[str, dict] = {
         "smtp_port": 587,
         "smtp_mode": "starttls",
         "oauth": "google",
-        "hint": "Gmail blocks normal passwords. Use an app password, or Sign in with Google.",
+        "hint": "Gmail rejects your account password. Create a 16-character app password at myaccount.google.com/apppasswords, turn on IMAP in Gmail settings, and paste that app password here.",
     },
     "outlook": {
         "label": "Outlook / Microsoft 365",

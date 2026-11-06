@@ -743,7 +743,13 @@ button.status-item:hover { background: var(--hover); color: var(--text); }
 .setup-points li::before { content: "✓"; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 10px; border-radius: 50%; background: rgba(255,255,255,0.2); font-size: 11px; }
 .setup-hero .btn { align-self: flex-start; margin-top: 8px; height: 40px; }
 .setup-card { overflow: auto; padding: 48px 56px; display: flex; flex-direction: column; gap: 16px; max-width: 760px; }
-.setup-card h2 { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
+.setup-card h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.walk-progress { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.walk-step { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 12.5px; font-weight: 650; }
+.walk-step span { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3); font-size: 11px; }
+.walk-step.on { border-color: var(--accent); color: var(--text); box-shadow: var(--ring); }
+.walk-step.on span { background: var(--accent); color: #fff; }
+.walk-help { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: 13px; }
 .setup-sessions { display: flex; flex-direction: column; gap: 8px; }
 .setup-session { display: flex; align-items: center; gap: 10px; }
 .setup-session input { flex: 1; height: 38px; border-radius: 9px; border: 1px solid var(--border-strong); padding: 0 12px; background: var(--surface); font-weight: 600; }

@@ -44,6 +44,22 @@ def prefers_plain(capabilities) -> bool:
     return "AUTH=PLAIN" in cap_names(capabilities)
 
 
+def explain_sign_in_error(email: str, imap_host: str, exc: BaseException) -> str:
+    text = str(exc)
+    upper = text.upper()
+    host = (imap_host or "").lower()
+    address = (email or "").lower()
+    rejected = "AUTHENTICATIONFAILED" in upper or "INVALID CREDENTIALS" in upper
+    gmail = host == "imap.gmail.com" or address.endswith("@gmail.com") or address.endswith("@googlemail.com")
+    if rejected and gmail:
+        return (
+            f"Gmail rejected the password for {email}. "
+            "Use a 16-character app password from https://myaccount.google.com/apppasswords, "
+            "and turn on IMAP in Gmail settings. Your Google account password will not work."
+        )
+    return f"Couldn't sign in to {email}: {exc}"
+
+
 def connect_account(account: Account, secret: dict) -> IMAPClient:
     try:
         client = IMAPClient(account.imap_host, port=account.imap_port, ssl=account.imap_ssl, timeout=30)
@@ -68,7 +84,7 @@ def connect_account(account: Account, secret: dict) -> IMAPClient:
     except MailError:
         raise
     except Exception as exc:
-        raise MailError(f"Couldn't sign in to {account.email}: {exc}") from exc
+        raise MailError(explain_sign_in_error(account.email, account.imap_host, exc)) from exc
 
 
 def logout(client: IMAPClient) -> None:

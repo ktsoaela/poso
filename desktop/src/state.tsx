@@ -27,6 +27,13 @@ import type {
   Toast,
 } from "./types";
 
+function signInToast(message: string): string {
+  if (/AUTHENTICATIONFAILED|Invalid credentials/i.test(message) && /gmail\.com/i.test(message)) {
+    return "Gmail rejected that password. Use a 16-character app password from myaccount.google.com/apppasswords, and turn on IMAP in Gmail settings. Your Google account password will not work.";
+  }
+  return message;
+}
+
 export type BulkAction =
   | "archive"
   | "trash"
@@ -139,7 +146,7 @@ interface MailValue {
   undoSpam: (id: number) => Promise<void>;
   syncNow: () => Promise<void>;
   createLabel: (name: string, color?: string) => Promise<Label | null>;
-  seedDemo: () => Promise<void>;
+  seedDemo: () => Promise<boolean>;
   clearDemo: () => Promise<boolean>;
   addAccount: (body: Record<string, unknown>) => Promise<boolean>;
   updateAccount: (id: number, body: Record<string, unknown>) => Promise<void>;
@@ -148,7 +155,7 @@ interface MailValue {
   renameSession: (id: number, name: string, color?: string) => Promise<void>;
   createSession: (name: string) => Promise<void>;
   deleteSession: (id: number) => Promise<void>;
-  startOAuth: (provider: string, sessionId?: number) => Promise<void>;
+  startOAuth: (provider: string, sessionId?: number) => Promise<boolean>;
   reload: () => Promise<void>;
   run: (work: () => Promise<void>) => Promise<void>;
 }
@@ -1125,11 +1132,16 @@ export function MailProvider({ children }: { children: ReactNode }) {
     undoSpam,
     syncNow,
     createLabel,
-    seedDemo: () =>
-      run(async () => {
+    seedDemo: async () => {
+      try {
         await post("/api/demo/seed");
         await reload();
-      }),
+        return true;
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "Sample mail could not be added.", { tone: "error" });
+        return false;
+      }
+    },
     clearDemo: async () => {
       try {
         await post("/api/demo/clear");
@@ -1148,7 +1160,7 @@ export function MailProvider({ children }: { children: ReactNode }) {
         toast("Account added — syncing now", { tone: "success" });
         return true;
       } catch (err) {
-        toast(err instanceof Error ? err.message : "Couldn't add that account.", { tone: "error", ttl: 9000 });
+        toast(signInToast(err instanceof Error ? err.message : "Couldn't add that account."), { tone: "error", ttl: 12000 });
         return false;
       }
     },
@@ -1184,14 +1196,28 @@ export function MailProvider({ children }: { children: ReactNode }) {
         await api(`/api/sessions/${id}`, { method: "DELETE" });
         await reload();
       }),
-    startOAuth: (provider, sessionId) =>
-      run(async () => {
-        if (!boot) return;
+    startOAuth: async (provider, sessionId) => {
+      if (!boot) return false;
+      const missing = provider === "google" ? !boot.oauth.google_client_id : provider === "microsoft" ? !boot.oauth.microsoft_client_id : false;
+      if (missing) {
+        setSettingsTab("signin");
+        setSettingsOpen(true);
+        setPaletteOpen(false);
+        const label = provider === "google" ? "Google" : "Microsoft";
+        toast(`Paste a ${label} client id under Sign-in apps and save it, then try Sign in again.`, { tone: "error", ttl: 12000 });
+        return false;
+      }
+      try {
         toast("Finish signing in in your browser…", { ttl: 12000 });
         await post("/api/oauth/start", { provider, session_id: sessionId ?? boot.active_session_id });
         await reload();
         toast("Account connected", { tone: "success" });
-      }),
+        return true;
+      } catch (err) {
+        toast(signInToast(err instanceof Error ? err.message : "Couldn't sign in."), { tone: "error", ttl: 12000 });
+        return false;
+      }
+    },
     reload,
     run,
   };
