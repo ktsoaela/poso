@@ -14,13 +14,24 @@ class Preset {
 
 const presets = <Preset>[
   Preset('gmail', 'Gmail', 'imap.gmail.com', 993, 'smtp.gmail.com', 465, 'ssl',
-      'Gmail needs an app password: Google Account → Security → 2-Step Verification → App passwords.'),
+      'Gmail rejects your normal Google password. Create an app password under Google Account → Security → 2-Step Verification → App passwords, then paste it here.'),
   Preset('outlook', 'Outlook / Microsoft 365', 'outlook.office365.com', 993, 'smtp.office365.com', 587, 'starttls',
-      'Most Microsoft accounts need OAuth, which Poso mobile does not support yet. App passwords work where Microsoft still allows them.'),
-  Preset('yahoo', 'Yahoo', 'imap.mail.yahoo.com', 993, 'smtp.mail.yahoo.com', 465, 'ssl', 'Yahoo needs an app password.'),
+      'Outlook and Microsoft 365 have turned off password sign-in. Poso on the phone cannot use Microsoft sign-in yet.'),
+  Preset('yahoo', 'Yahoo', 'imap.mail.yahoo.com', 993, 'smtp.mail.yahoo.com', 465, 'ssl',
+      'Yahoo rejects your normal password. Create an app password under Yahoo Account Security → Generate app password, then paste it here.'),
   Preset('icloud', 'iCloud', 'imap.mail.me.com', 993, 'smtp.mail.me.com', 587, 'starttls', 'iCloud needs an app-specific password.'),
-  Preset('custom', 'Other IMAP', '', 993, '', 587, 'starttls', 'Use the IMAP (SSL, port 993) and SMTP settings from your provider.'),
+  Preset('custom', 'Other IMAP', '', 993, '', 587, 'starttls',
+      'Work mail looks up IMAP and SMTP from your domain. If the servers stay empty, enter the hosts from your provider.'),
 ];
+
+/// App passwords are shown in groups of four. A normal password can contain spaces, so only the
+/// providers that issue app passwords are stripped.
+String mailPassword(String provider, String raw) {
+  if (provider == 'gmail' || provider == 'yahoo' || provider == 'icloud') {
+    return raw.replaceAll(RegExp(r'\s+'), '');
+  }
+  return raw;
+}
 
 Preset presetFor(String id) => presets.firstWhere((p) => p.id == id, orElse: () => presets.last);
 

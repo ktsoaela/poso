@@ -257,7 +257,9 @@ class Mailbox extends ChangeNotifier {
   Future<Account> addAccount(AccountInput input) async {
     final email = input.email.trim();
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) throw SyncException('Enter a full email address.');
-    if (input.imapHost.trim().isEmpty || input.smtpHost.trim().isEmpty) throw SyncException('Enter the IMAP and SMTP servers.');
+    if (input.imapHost.trim().isEmpty || input.smtpHost.trim().isEmpty) {
+      throw SyncException('Enter the IMAP and SMTP servers. Open Server settings if they were not filled in.');
+    }
     final all = await db.accounts();
     if (all.any((a) => a.email.toLowerCase() == email.toLowerCase())) throw SyncException('$email is already on this phone.');
     final draft = Account(

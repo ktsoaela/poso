@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:enough_mail/enough_mail.dart' show Discover, SocketType;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,13 +31,22 @@ class _AccountScreenState extends State<AccountScreen> {
   late int sessionId = widget.sessionId;
   bool advanced = false;
   bool busy = false;
+  bool lookingUp = false;
   bool hidePassword = true;
   String? error;
+  Timer? _lookupTimer;
+  Future<void>? _lookupFuture;
 
   void _apply(Preset next) {
     setState(() {
       preset = next;
-      if (next.id != 'custom') {
+      if (next.id == 'custom') {
+        imapHost.clear();
+        smtpHost.clear();
+        imapPort.text = '993';
+        smtpPort.text = '587';
+        smtpMode = 'starttls';
+      } else {
         imapHost.text = next.imapHost;
         imapPort.text = '${next.imapPort}';
         smtpHost.text = next.smtpHost;
@@ -45,8 +57,67 @@ class _AccountScreenState extends State<AccountScreen> {
     });
   }
 
+  void _scheduleLookup(String value) {
+    _lookupTimer?.cancel();
+    final emailAddress = value.trim();
+    if (preset.id != 'custom' || !emailAddress.contains('@')) return;
+    _lookupTimer = Timer(const Duration(milliseconds: 400), () {
+      _lookupFuture = _lookup(emailAddress);
+    });
+  }
+
+  Future<void> _lookup(String emailAddress) async {
+    if (!mounted || preset.id != 'custom') return;
+    setState(() => lookingUp = true);
+    try {
+      final config = await Discover.discover(emailAddress);
+      if (!mounted || preset.id != 'custom') return;
+      final incoming = config?.preferredIncomingImapServer;
+      final outgoing = config?.preferredOutgoingSmtpServer ?? config?.preferredOutgoingServer;
+      if (config == null || config.isFromInsecureSource || incoming == null || outgoing == null || incoming.hostname.isEmpty || outgoing.hostname.isEmpty) {
+        setState(() {
+          lookingUp = false;
+          advanced = true;
+        });
+        return;
+      }
+      final known = _knownPreset(incoming.hostname);
+      if (known != null) {
+        _apply(known);
+        setState(() => lookingUp = false);
+        return;
+      }
+      setState(() {
+        imapHost.text = incoming.hostname;
+        imapPort.text = '${incoming.port}';
+        smtpHost.text = outgoing.hostname;
+        smtpPort.text = '${outgoing.port}';
+        smtpMode = outgoing.socketType == SocketType.ssl ? 'ssl' : 'starttls';
+        lookingUp = false;
+        advanced = true;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          lookingUp = false;
+          advanced = true;
+        });
+      }
+    }
+  }
+
+  Preset? _knownPreset(String host) {
+    final name = host.toLowerCase();
+    if (name.endsWith('gmail.com') || name.endsWith('googlemail.com')) return presetFor('gmail');
+    if (name.contains('yahoo')) return presetFor('yahoo');
+    if (name.contains('office365') || name.contains('outlook.com')) return presetFor('outlook');
+    if (name.endsWith('mail.me.com') || name.endsWith('icloud.com')) return presetFor('icloud');
+    return null;
+  }
+
   @override
   void dispose() {
+    _lookupTimer?.cancel();
     for (final c in [email, password, name, username, imapHost, imapPort, smtpHost, smtpPort]) {
       c.dispose();
     }
@@ -62,10 +133,17 @@ class _AccountScreenState extends State<AccountScreen> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
+      if (_lookupTimer?.isActive ?? false) {
+        _lookupTimer!.cancel();
+        await _lookup(email.text.trim());
+      } else {
+        await _lookupFuture;
+      }
+      if (!mounted) return;
       final account = await mail.addAccount(AccountInput(
         sessionId: sessionId,
         email: email.text,
-        password: password.text.replaceAll(' ', preset.id == 'gmail' ? '' : ' '), // Gmail shows app passwords in groups of 4
+        password: mailPassword(preset.id, password.text),
         displayName: name.text,
         username: username.text,
         provider: preset.id,
@@ -88,9 +166,17 @@ class _AccountScreenState extends State<AccountScreen> {
   String _friendly(String raw) {
     final lower = raw.toLowerCase();
     if (lower.contains('authenticationfailed') || lower.contains('invalid credentials') || lower.contains('login failed') || lower.contains('authenticate')) {
-      return preset.id == 'gmail'
-          ? 'Gmail rejected the sign-in. Use a 16-letter app password, not your normal Google password.'
-          : 'The server rejected the email or password.';
+      final host = imapHost.text.toLowerCase();
+      if (preset.id == 'gmail' || host.endsWith('gmail.com')) {
+        return 'Gmail rejected the sign-in. Use a 16-letter app password, not your normal Google password.';
+      }
+      if (preset.id == 'yahoo' || host.contains('yahoo')) {
+        return 'Yahoo rejected the sign-in. Use an app password, not your normal Yahoo password.';
+      }
+      if (preset.id == 'outlook' || host.contains('office365') || host.contains('outlook')) {
+        return 'Microsoft rejected the password. Outlook and Microsoft 365 need sign-in that this phone app does not support yet.';
+      }
+      return 'The server rejected the email or password.';
     }
     if (lower.contains('socket') || lower.contains('host') || lower.contains('timeout')) return 'Couldn’t reach the mail server. Check the server name and your connection.';
     return raw;
@@ -126,14 +212,20 @@ class _AccountScreenState extends State<AccountScreen> {
             onChanged: (value) {
               final guess = guessPreset(value);
               if (value.contains('@') && guess.id != preset.id) _apply(guess);
+              if (guess.id == 'custom') _scheduleLookup(value);
             },
           ),
           gap,
           DropdownButtonFormField<String>(
+            key: ValueKey(preset.id),
             initialValue: preset.id,
             decoration: const InputDecoration(labelText: 'Provider'),
             items: [for (final p in presets) DropdownMenuItem(value: p.id, child: Text(p.label))],
-            onChanged: (id) => _apply(presetFor(id ?? 'custom')),
+            onChanged: (id) {
+              final next = presetFor(id ?? 'custom');
+              _apply(next);
+              if (next.id == 'custom') _scheduleLookup(email.text);
+            },
           ),
           Padding(padding: const EdgeInsets.fromLTRB(4, 8, 4, 0), child: Text(preset.hint, style: theme.textTheme.bodySmall)),
           gap,
@@ -143,7 +235,7 @@ class _AccountScreenState extends State<AccountScreen> {
             autocorrect: false,
             enableSuggestions: false,
             decoration: InputDecoration(
-              labelText: preset.id == 'gmail' ? 'App password' : 'Password',
+              labelText: preset.id == 'gmail' || preset.id == 'yahoo' || preset.id == 'icloud' ? 'App password' : 'Password',
               suffixIcon: IconButton(icon: Icon(hidePassword ? Icons.visibility : Icons.visibility_off), onPressed: () => setState(() => hidePassword = !hidePassword)),
             ),
           ),
@@ -176,10 +268,11 @@ class _AccountScreenState extends State<AccountScreen> {
               onChanged: (v) => setState(() => smtpMode = v ?? smtpMode),
             ),
           ],
+          if (lookingUp) const Padding(padding: EdgeInsets.only(top: 12), child: Text('Looking up this domain’s mail servers…')),
           if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: TextStyle(color: theme.colorScheme.error))),
           const SizedBox(height: 20),
           FilledButton(
-            onPressed: busy || !online ? null : _save,
+            onPressed: busy ? null : _save,
             child: busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sign in and add'),
           ),
           const SizedBox(height: 12),

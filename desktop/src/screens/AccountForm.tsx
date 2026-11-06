@@ -95,7 +95,7 @@ export function AccountForm({ defaultSessionId, onDone }: { defaultSessionId?: n
       </label>
       <label className="field">
         <span>
-          <Lock size={12} /> Password or app password
+          <Lock size={12} /> {provider === "gmail" || provider === "yahoo" || provider === "icloud" ? "App password" : "Password"}
         </span>
         <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Stored in Windows Credential Manager" />
       </label>

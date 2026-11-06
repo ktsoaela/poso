@@ -1,9 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:enough_mail/enough_mail.dart' as em;
+// enough_mail's public login() sends IMAP LOGIN. Gmail advertises only AUTH=PLAIN.
+// ignore: implementation_imports
+import 'package:enough_mail/src/private/imap/capability_parser.dart';
+// ignore: implementation_imports
+import 'package:enough_mail/src/private/imap/command.dart';
 
 import '../data/models.dart';
 import '../util/html_text.dart';
@@ -132,6 +138,42 @@ bool isOfflineError(Object error) =>
 
 // ------------------------------------------------------------------------- enough_mail
 
+/// SASL PLAIN initial response: `\0user\0password`, as in RFC 4616.
+String imapPlainInitialResponse(String user, String password) => base64.encode(utf8.encode('\u0000$user\u0000$password'));
+
+bool _authRejected(Object error) {
+  final lower = error.toString().toLowerCase();
+  return lower.contains('authenticationfailed') || lower.contains('invalid credentials') || lower.contains('login failed') || lower.contains('authenticate');
+}
+
+/// Gmail and Yahoo advertise `AUTH=PLAIN` and reject the IMAP `LOGIN` command.
+Future<void> loginImap(em.ImapClient client, String user, String password) async {
+  // Gmail's greeting has no capability list. Ask before choosing a mechanism.
+  if (client.serverInfo.capabilities == null) {
+    await client.capability();
+  }
+  final names = (client.serverInfo.capabilities ?? const <em.Capability>[]).map((c) => c.name.toUpperCase()).toSet();
+  final plain = names.contains('AUTH=PLAIN');
+  final loginDisabled = names.contains('LOGINDISABLED');
+  if (plain) {
+    try {
+      final token = imapPlainInitialResponse(user, password);
+      await client.sendCommand<List<em.Capability>>(
+        Command.withContinuation(['AUTHENTICATE PLAIN', token], logText: 'AUTHENTICATE PLAIN (scrambled)'),
+        CapabilityParser(client.serverInfo),
+      );
+      client.isLoggedIn = true;
+      return;
+    } catch (error) {
+      if (loginDisabled || _authRejected(error)) rethrow;
+    }
+  }
+  if (loginDisabled) {
+    throw em.ImapException(client, 'This server does not accept a password.');
+  }
+  await client.login(user, password);
+}
+
 class EnoughMailConnector implements MailConnector {
   const EnoughMailConnector();
 
@@ -140,7 +182,7 @@ class EnoughMailConnector implements MailConnector {
     final client = em.ImapClient(defaultResponseTimeout: const Duration(seconds: 60));
     await client.connectToServer(account.imapHost, account.imapPort, isSecure: account.imapSsl, timeout: const Duration(seconds: 20));
     try {
-      await client.login(account.username.isNotEmpty ? account.username : account.email, password);
+      await loginImap(client, account.username.isNotEmpty ? account.username : account.email, password);
     } catch (_) {
       await client.disconnect();
       rethrow;
@@ -157,7 +199,9 @@ class EnoughMailConnector implements MailConnector {
       if (account.smtpMode == 'starttls') {
         await client.startTls();
       }
-      await client.authenticate(account.username.isNotEmpty ? account.username : account.email, password, em.AuthMechanism.login);
+      final user = account.username.isNotEmpty ? account.username : account.email;
+      final mechanism = client.serverInfo.supportsAuth(em.AuthMechanism.plain) ? em.AuthMechanism.plain : em.AuthMechanism.login;
+      await client.authenticate(user, password, mechanism);
       await client.sendMessage(buildMime(mail), from: em.MailAddress(mail.from.name, mail.from.email),
           recipients: mail.recipients.map((a) => em.MailAddress(a.name, a.email)).toList());
     } finally {

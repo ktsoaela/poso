@@ -29,7 +29,7 @@ from session_mail.mail.imap_client import (
     store_flags,
 )
 from session_mail.mail.parse import html_to_text, parse_message
-from session_mail.mail.presets import ACCOUNT_COLORS, PRESETS, apply_preset
+from session_mail.mail.presets import ACCOUNT_COLORS, PRESETS, apply_preset, normalize_password
 from session_mail.mail.roles import assert_email
 from session_mail.mail.smtp_client import send_message
 from session_mail.mail.store import (
@@ -434,6 +434,7 @@ def create_password_account(payload) -> dict:
     )
     if not payload.password:
         raise MailError("Enter a password or app password.")
+    password = normalize_password(payload.provider, payload.password)
     probe = Account(
         email=email,
         username=(payload.username or email).strip(),
@@ -445,7 +446,7 @@ def create_password_account(payload) -> dict:
         smtp_port=hosts["smtp_port"],
         smtp_mode=hosts["smtp_mode"],
     )
-    secret = {"password": payload.password}
+    secret = {"password": password}
     client = connect_account(probe, secret)
     try:
         remote_folders = list_remote_folders(client)
@@ -544,7 +545,7 @@ def update_account(account_id: int, payload) -> dict:
             account.sync_enabled = payload.sync_enabled
         if payload.signature is not None:
             account.signature = payload.signature[:20_000]
-        password = (payload.password or "").strip()
+        password = normalize_password(account.provider, payload.password or "")
         auth_type = account.auth_type
         changes = payload.model_dump(exclude_none=True)
         if "password" in changes:

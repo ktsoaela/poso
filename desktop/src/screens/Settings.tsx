@@ -255,7 +255,7 @@ function AccountCard({ account }: { account: Account }) {
 }
 
 function SampleMailNotice() {
-  const { boot, clearDemo, run } = useMail();
+  const { boot, clearDemo } = useMail();
   const [confirming, setConfirming] = useState(false);
   const sample = boot?.accounts.filter((account) => account.auth_type === "local") ?? [];
   if (!sample.length) return null;
@@ -264,7 +264,7 @@ function SampleMailNotice() {
       <p className="set-hint">{sample.map((account) => account.email).join(", ")}</p>
       {confirming ? (
         <div className="form-actions">
-          <button type="button" className="btn danger" onClick={() => void run(async () => { await clearDemo(); setConfirming(false); })}>
+          <button type="button" className="btn danger" onClick={() => void clearDemo().then((removed) => { if (removed) setConfirming(false); })}>
             Remove sample mail
           </button>
           <button type="button" className="btn" onClick={() => setConfirming(false)}>

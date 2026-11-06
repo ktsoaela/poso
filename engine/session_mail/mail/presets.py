@@ -60,6 +60,15 @@ PRESETS: dict[str, dict] = {
 
 ACCOUNT_COLORS = ["#4f46e5", "#0ea5e9", "#10b981", "#8b5cf6", "#f43f5e", "#f59e0b"]
 
+_APP_PASSWORD_PROVIDERS = {"gmail", "yahoo", "icloud"}
+
+
+def normalize_password(provider: str, password: str) -> str:
+    """App passwords are printed in groups of four. A normal password may contain spaces."""
+    if provider in _APP_PASSWORD_PROVIDERS:
+        return "".join(password.split())
+    return password.strip()
+
 
 def apply_preset(
     provider: str,

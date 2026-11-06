@@ -31,6 +31,19 @@ def _text(value) -> str:
     return str(value)
 
 
+def cap_names(capabilities) -> set[str]:
+    names: set[str] = set()
+    for item in capabilities:
+        text = item.decode("ascii", "replace") if isinstance(item, bytes) else str(item)
+        names.add(text.upper())
+    return names
+
+
+def prefers_plain(capabilities) -> bool:
+    """Gmail and Yahoo advertise AUTH=PLAIN and reject the IMAP LOGIN command."""
+    return "AUTH=PLAIN" in cap_names(capabilities)
+
+
 def connect_account(account: Account, secret: dict) -> IMAPClient:
     try:
         client = IMAPClient(account.imap_host, port=account.imap_port, ssl=account.imap_ssl, timeout=30)
@@ -43,7 +56,14 @@ def connect_account(account: Account, secret: dict) -> IMAPClient:
             password = secret.get("password") or ""
             if not password:
                 raise MailError("This account has no password saved.")
-            client.login(account.username or account.email, password)
+            username = account.username or account.email
+            names = cap_names(client.capabilities())
+            if prefers_plain(names):
+                client.plain_login(username, password)
+            elif "LOGINDISABLED" in names:
+                raise MailError("This server does not accept a password.")
+            else:
+                client.login(username, password)
         return client
     except MailError:
         raise
