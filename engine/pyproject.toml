@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "session-mail-engine"
+version = "0.1.0"
+description = "Local mail engine for Session"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "sqlalchemy>=2.0",
+  "imapclient>=3.0",
+  "aiosmtplib>=3.0",
+  "nh3>=0.2",
+  "keyring>=25.0",
+  "httpx>=0.27",
+  "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+build = ["pyinstaller>=6.0"]
+
+[project.scripts]
+session-mail-engine = "session_mail.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["session_mail*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,8 @@
+[package]
+name = "session-mail-engine"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "session-mail-engine"
+path = "src/main.rs"

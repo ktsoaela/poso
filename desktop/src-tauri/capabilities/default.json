@@ -1,0 +1,18 @@
+{
+  "identifier": "default",
+  "description": "Session window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/session-mail-engine",
+          "sidecar": true
+        }
+      ]
+    }
+  ]
+}
