@@ -163,3 +163,11 @@ def size_from_item(item: dict) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return 0
+
+
+def delete_uid(client: IMAPClient, uid: int) -> None:
+    client.add_flags([uid], [b"\\Deleted"])
+    try:
+        client.uid_expunge([uid])
+    except Exception:
+        client.expunge()

@@ -1,4 +1,6 @@
 $ErrorActionPreference = "Stop"
+# Cursor's sandbox sets this, which would hide the launcher outside the project tree.
+Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
 $root = Split-Path -Parent $PSScriptRoot
 $engine = Join-Path $root "engine"
 $desktop = Join-Path $root "desktop"
@@ -14,7 +16,7 @@ if (-not (Test-Path $python)) {
 Push-Location $engine
 & .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 & .\.venv\Scripts\python.exe -m pip install pyinstaller
-& .\.venv\Scripts\pyinstaller.exe --noconfirm --clean --onedir --name session-mail-engine --paths . --collect-all uvicorn --collect-all keyring --collect-all imapclient --collect-submodules session_mail --hidden-import keyring.backends.Windows run_engine.py
+& .\.venv\Scripts\pyinstaller.exe --noconfirm --clean --onedir --noconsole --name session-mail-engine --paths . --collect-all uvicorn --collect-all keyring --collect-all imapclient --collect-submodules session_mail --hidden-import keyring.backends.Windows run_engine.py
 Pop-Location
 
 $dist = Join-Path $engine "dist\session-mail-engine"
@@ -30,6 +32,7 @@ if (-not (Test-Path "node_modules")) { npm install }
 & $python (Join-Path $root "scripts\make_icon.py")
 npx tauri icon (Join-Path $root "docs\icon.png")
 npm run tauri build
+if ($LASTEXITCODE -ne 0) { throw "Tauri build failed with exit code $LASTEXITCODE" }
 Pop-Location
 
 Write-Output "Installer is under desktop\src-tauri\target\release\bundle\nsis"

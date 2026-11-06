@@ -24,10 +24,24 @@ Mail is synced over IMAP and sent over SMTP, including Gmail and Outlook account
 
 ## Why Session
 
-- **Sessions** split business addresses and personal addresses into workspaces you can switch without mixing the inbox.
-- **One list** shows every account in the active session, with a color so you can still see which address received the mail.
-- **Spam** collects provider junk, a blocklist, and a local filter trained from the mail you mark.
-- **Reading** keeps a short line and blocks remote images until you load them.
+- **Sessions** split business addresses (x, y, z) and personal addresses (1, 2) into workspaces. Switch from the header dropdown or with `Ctrl+1`…`Ctrl+9`.
+- **One list** shows every account in the active session. A colored bar on each row shows which address received the mail.
+- **Rich mail** renders the sender's HTML, CSS and inline images in a sandboxed frame. Remote images stay blocked until you load them.
+- **Spam** combines provider junk folders, a blocklist, and a local Bayesian filter trained from the mail you mark.
+
+## Features
+
+| Area | What you get |
+| --- | --- |
+| Layout | Header with session switcher, search and settings. Sidebar with folders, labels and accounts. Status footer with engine state, sync time and version. Light/dark themes, 7 accents, comfortable/compact density. Reading pane on the right, at the bottom, or off. |
+| Reading | Conversation view, sandboxed HTML/CSS, `cid:` inline images, attachment cards, plain-text toggle, full headers, print, save as `.eml` |
+| Organising | Labels (Outlook categories), flag, pin to top, snooze, archive, move, bulk select with hover actions, Undo on archive/delete |
+| Search | Full-text search plus `from:` `to:` `subject:` `has:attachment` `is:unread` `is:flagged` `label:` `in:` `account:` `before:` `after:` `newer:7d`, across all folders or the current one |
+| Writing | Rich text editor, per-account HTML signatures, contact autocomplete, Cc/Bcc, drag-and-drop attachments, inline images, high priority, read receipts, undo send, scheduled send, auto-saved drafts |
+| Rules | Outlook/Thunderbird-style rules (from/to/subject/body/account → label, read, flag, archive, spam, delete). They run on new mail and on demand. |
+| Data | Export to MBOX, EML (zip), JSON backup or contacts CSV. Import `.eml`, `.mbox` (Thunderbird, Apple Mail, Google Takeout) or zips of `.eml`. Restore backups. |
+| Audit | Append-only log of sign-ins, sends, moves, deletes, spam decisions, rules, imports, exports and settings changes, with filtering and CSV/JSON export |
+| Productivity | Command palette (`Ctrl+K`), Gmail-style shortcuts (`?` lists them), desktop notifications |
 
 ## Quick start
 

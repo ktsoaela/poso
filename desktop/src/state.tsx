@@ -4,134 +4,238 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { api, ApiError, connectEngine, socketUrl } from "./api";
-import { groupThreads, quoteBody, replyAllTo, subjectWith } from "./format";
+import { api, ApiError, connectEngine, post, socketUrl } from "./api";
+import { forwardHtml, groupThreads, quoteHtml, replyAllTo, subjectWith, textToHtml } from "./format";
 import type {
   Account,
   Bootstrap,
   ComposeState,
   Draft,
+  Label,
   Mailbox,
   Message,
   MessageDetail,
+  OutboxItem,
   Provider,
+  QuickFilter,
+  Session,
   Toast,
 } from "./types";
+
+export type BulkAction =
+  | "archive"
+  | "trash"
+  | "inbox"
+  | "spam"
+  | "not_spam"
+  | "read"
+  | "unread"
+  | "flag"
+  | "unflag"
+  | "delete_forever";
+
+export type SettingsTab =
+  | "general"
+  | "accounts"
+  | "sessions"
+  | "labels"
+  | "rules"
+  | "spam"
+  | "signin"
+  | "data"
+  | "audit"
+  | "about";
+
+const LEAVES_VIEW: BulkAction[] = ["archive", "trash", "inbox", "spam", "not_spam", "delete_forever"];
+const PAGE = 300;
 
 interface MailValue {
   loading: boolean;
   error: string;
+  connected: boolean;
   boot: Bootstrap | null;
   providers: Provider[];
+  activeSession: Session | null;
+  sessionAccounts: Account[];
+  sessionLabels: Label[];
   mailbox: Mailbox;
   setMailbox: (mailbox: Mailbox) => void;
+  mailboxTitle: string;
   query: string;
   setQuery: (query: string) => void;
-  conversations: boolean;
-  setConversations: (value: boolean) => void;
+  searchAll: boolean;
+  setSearchAll: (value: boolean) => void;
+  quick: QuickFilter;
+  setQuick: (value: QuickFilter) => void;
   messages: Message[];
   rows: Message[];
+  total: number;
+  loadMore: () => void;
+  listLoading: boolean;
   drafts: Draft[];
+  outbox: OutboxItem[];
   selectedId: number | null;
   select: (id: number | null) => void;
   detail: MessageDetail | null;
+  detailLoading: boolean;
+  checked: Set<number>;
+  toggleCheck: (id: number) => void;
+  setChecked: (ids: Set<number>) => void;
   syncing: boolean;
-  loadImages: boolean;
-  setLoadImages: (value: boolean) => void;
+  remoteAllowed: (id: number) => boolean;
+  allowRemote: (id: number) => void;
   compose: ComposeState | null;
   sending: boolean;
-  paletteOpen: boolean;
-  setPaletteOpen: (value: boolean) => void;
-  settingsOpen: boolean;
-  setSettingsOpen: (value: boolean) => void;
-  toasts: Toast[];
-  dismissToast: (id: number) => void;
-  sessionAccounts: Account[];
-  switchSession: (id: number) => Promise<void>;
-  moveSelection: (delta: number) => void;
   openCompose: (seed?: Partial<ComposeState>) => void;
   updateCompose: (patch: Partial<ComposeState>) => void;
   closeCompose: () => void;
+  discardCompose: () => Promise<void>;
+  send: (sendAt?: Date) => Promise<void>;
   reply: (all?: boolean) => void;
   forward: () => void;
-  send: () => Promise<void>;
-  archive: () => Promise<void>;
-  trash: () => Promise<void>;
-  moveMessage: (id: number, role: string) => Promise<void>;
-  reportSpam: (id?: number) => Promise<void>;
-  notSpam: (id: number) => Promise<void>;
+  openDraft: (draft: Draft) => void;
+  editScheduled: (item: OutboxItem) => Promise<void>;
+  paletteOpen: boolean;
+  setPaletteOpen: (value: boolean) => void;
+  settingsOpen: boolean;
+  settingsTab: SettingsTab;
+  openSettings: (tab?: SettingsTab) => void;
+  closeSettings: () => void;
+  helpOpen: boolean;
+  setHelpOpen: (value: boolean) => void;
+  toasts: Toast[];
+  toast: (text: string, options?: Omit<Toast, "id" | "text">) => void;
+  dismissToast: (id: number) => void;
+  switchSession: (id: number) => Promise<void>;
+  moveSelection: (delta: number) => void;
+  targetIds: (explicit?: number[]) => number[];
+  act: (action: BulkAction, ids?: number[]) => Promise<void>;
+  labelMessages: (labelId: number, add: boolean, ids?: number[]) => Promise<void>;
+  snoozeMessages: (until: Date | null, ids?: number[]) => Promise<void>;
+  pinMessage: (id: number, pinned: boolean) => Promise<void>;
+  emptyFolder: (role: "trash" | "spam") => Promise<void>;
   undoSpam: (id: number) => Promise<void>;
-  toggleFlag: () => Promise<void>;
+  syncNow: () => Promise<void>;
+  createLabel: (name: string, color?: string) => Promise<Label | null>;
   seedDemo: () => Promise<void>;
-  addAccount: (body: Record<string, unknown>) => Promise<void>;
+  addAccount: (body: Record<string, unknown>) => Promise<boolean>;
   updateAccount: (id: number, body: Record<string, unknown>) => Promise<void>;
   removeAccount: (id: number) => Promise<void>;
   saveSettings: (body: Record<string, unknown>) => Promise<void>;
-  renameSession: (id: number, name: string) => Promise<void>;
+  renameSession: (id: number, name: string, color?: string) => Promise<void>;
   createSession: (name: string) => Promise<void>;
-  startOAuth: (provider: string) => Promise<void>;
+  deleteSession: (id: number) => Promise<void>;
+  startOAuth: (provider: string, sessionId?: number) => Promise<void>;
   reload: () => Promise<void>;
-  openDraft: (draft: Draft) => void;
+  run: (work: () => Promise<void>) => Promise<void>;
 }
 
 const MailContext = createContext<MailValue | null>(null);
+let composeKey = 1;
 
 function emptyCompose(accountId: number | null): ComposeState {
   return {
+    key: composeKey++,
     accountId,
     to: "",
     cc: "",
     bcc: "",
     subject: "",
-    body: "",
+    html: "",
     inReplyTo: "",
     references: [],
     replyToMessageId: null,
     draftId: null,
     showCc: false,
     files: [],
+    priority: "normal",
+    readReceipt: false,
+    minimized: false,
+    expanded: false,
   };
 }
+
+function signatureBlock(account: Account | undefined): string {
+  if (!account?.signature) return "";
+  return `<div data-signature="1">${account.signature}</div>`;
+}
+
+const ROLE_TITLES: Record<string, string> = {
+  inbox: "Inbox",
+  flagged: "Flagged",
+  snoozed: "Snoozed",
+  unread: "Unread",
+  everything: "All mail",
+  scheduled: "Scheduled",
+  sent: "Sent",
+  drafts: "Drafts",
+  archive: "Archive",
+  trash: "Trash",
+  spam: "Spam",
+};
 
 export function MailProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [connected, setConnected] = useState(false);
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [mailbox, setMailboxState] = useState<Mailbox>({ kind: "role", role: "inbox" });
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [conversations, setConversations] = useState(true);
+  const [searchAll, setSearchAll] = useState(true);
+  const [quick, setQuickState] = useState<QuickFilter>("all");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(PAGE);
+  const [listLoading, setListLoading] = useState(false);
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<MessageDetail | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [loadImages, setLoadImages] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [checked, setCheckedState] = useState<Set<number>>(new Set());
+  const [syncingAccounts, setSyncingAccounts] = useState<Set<number>>(new Set());
+  const [remoteIds, setRemoteIds] = useState<Set<number>>(new Set());
   const [compose, setCompose] = useState<ComposeState | null>(null);
   const [sending, setSending] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [helpOpen, setHelpOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [tick, setTick] = useState(0);
-
-  const pushToast = useCallback((text: string, undoId?: number) => {
-    const id = Date.now() + Math.floor(Math.random() * 1000);
-    setToasts((current) => [...current, { id, text, undoId }]);
-    window.setTimeout(() => setToasts((current) => current.filter((item) => item.id !== id)), 6000);
-  }, []);
+  const bootRef = useRef<Bootstrap | null>(null);
+  bootRef.current = boot;
 
   const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((item) => item.id !== id));
   }, []);
 
+  const toast = useCallback((text: string, options: Omit<Toast, "id" | "text"> = {}) => {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts((current) => [...current.slice(-3), { id, text, ...options }]);
+    window.setTimeout(() => setToasts((current) => current.filter((item) => item.id !== id)), options.ttl ?? 6000);
+  }, []);
+
+  const run = useCallback(
+    async (work: () => Promise<void>) => {
+      try {
+        await work();
+      } catch (err) {
+        toast(err instanceof ApiError || err instanceof Error ? err.message : "That didn't work.", { tone: "error" });
+      }
+    },
+    [toast],
+  );
+
   const reload = useCallback(async () => {
     const data = await api<Bootstrap>("/api/bootstrap");
     setBoot(data);
-    setLoadImages(data.settings.load_remote_images);
     setTick((value) => value + 1);
   }, []);
 
@@ -140,15 +244,13 @@ export function MailProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         await connectEngine();
-        const data = await api<Bootstrap>("/api/bootstrap");
-        const preset = await api<Provider[]>("/api/providers");
+        const [data, preset] = await Promise.all([api<Bootstrap>("/api/bootstrap"), api<Provider[]>("/api/providers")]);
         if (!live) return;
         setBoot(data);
         setProviders(preset);
-        setLoadImages(data.settings.load_remote_images);
+        setConnected(true);
       } catch (err) {
-        if (!live) return;
-        setError(err instanceof Error ? err.message : "Session couldn't open the mailbox.");
+        if (live) setError(err instanceof Error ? err.message : "Session couldn't open the mailbox.");
       } finally {
         if (live) setLoading(false);
       }
@@ -158,80 +260,138 @@ export function MailProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Theme, density, and accent live on <html> so CSS variables cascade everywhere.
   useEffect(() => {
-    const theme = boot?.settings.theme ?? "system";
+    const settings = boot?.settings;
     const apply = () => {
-      const dark =
-        theme === "dark" ||
-        (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
-      document.documentElement.dataset.density = boot?.settings.density ?? "comfortable";
+      const theme = settings?.theme ?? "system";
+      const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      const root = document.documentElement;
+      root.dataset.theme = dark ? "dark" : "light";
+      root.dataset.density = settings?.density ?? "comfortable";
+      root.dataset.accent = settings?.accent ?? "indigo";
     };
     apply();
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [boot?.settings.theme, boot?.settings.density]);
+  }, [boot?.settings]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebounced(query), 220);
     return () => window.clearTimeout(handle);
   }, [query]);
 
+  const activeId = boot?.active_session_id ?? null;
+
+  // Message list.
   useEffect(() => {
-    if (!boot) return;
+    if (!activeId) return;
+    if (mailbox.kind === "role" && (mailbox.role === "drafts" || mailbox.role === "scheduled") && !debounced.trim()) {
+      setMessages([]);
+      setTotal(0);
+      return;
+    }
     let live = true;
-    const params = new URLSearchParams({ session_id: String(boot.active_session_id), limit: "200" });
-    if (mailbox.kind === "role" && mailbox.role !== "drafts") params.set("folder_role", mailbox.role);
-    if (mailbox.kind === "role" && mailbox.accountId) params.set("account_id", String(mailbox.accountId));
-    if (mailbox.kind === "folder") params.set("folder_id", String(mailbox.folderId));
-    if (debounced.trim()) params.set("q", debounced.trim());
-    api<{ messages: Message[] }>(`/api/messages?${params}`)
+    const params = new URLSearchParams({ session_id: String(activeId), limit: String(limit) });
+    const searching = Boolean(debounced.trim());
+    const scoped = !searching || !searchAll;
+    if (scoped) {
+      if (mailbox.kind === "role" && mailbox.role !== "drafts" && mailbox.role !== "scheduled") params.set("folder_role", mailbox.role);
+      if (mailbox.kind === "role" && mailbox.accountId) params.set("account_id", String(mailbox.accountId));
+      if (mailbox.kind === "folder") params.set("folder_id", String(mailbox.folderId));
+      if (mailbox.kind === "label") params.set("label_id", String(mailbox.labelId));
+    } else {
+      params.set("folder_role", "everything");
+    }
+    const extra = { all: "", unread: "is:unread", flagged: "is:flagged", attachments: "has:attachment" }[quick];
+    const q = [debounced.trim(), extra].filter(Boolean).join(" ");
+    if (q) params.set("q", q);
+    setListLoading(true);
+    api<{ messages: Message[]; total: number }>(`/api/messages?${params}`)
       .then((data) => {
-        if (live) setMessages(data.messages);
+        if (!live) return;
+        setMessages(data.messages);
+        setTotal(data.total);
       })
       .catch((err: unknown) => {
-        if (live) pushToast(err instanceof Error ? err.message : "Couldn't load mail.");
-      });
-    api<{ drafts: Draft[] }>(`/api/drafts?session_id=${boot.active_session_id}`)
-      .then((data) => {
-        if (live) setDrafts(data.drafts);
+        if (live) toast(err instanceof Error ? err.message : "Couldn't load mail.", { tone: "error" });
       })
-      .catch(() => {
-        if (live) setDrafts([]);
+      .finally(() => {
+        if (live) setListLoading(false);
       });
     return () => {
       live = false;
     };
-  }, [boot?.active_session_id, mailbox, debounced, tick, boot, pushToast]);
+  }, [activeId, mailbox, debounced, searchAll, quick, limit, tick, toast]);
 
+  // Drafts and scheduled mail (also used for sidebar counts).
   useEffect(() => {
-    if (!boot) return;
+    if (!activeId) return;
+    let live = true;
+    api<{ drafts: Draft[] }>(`/api/drafts?session_id=${activeId}`)
+      .then((data) => live && setDrafts(data.drafts))
+      .catch(() => live && setDrafts([]));
+    api<{ items: OutboxItem[] }>(`/api/outbox?session_id=${activeId}`)
+      .then((data) => live && setOutbox(data.items))
+      .catch(() => live && setOutbox([]));
+    return () => {
+      live = false;
+    };
+  }, [activeId, tick]);
+
+  // Live updates from the engine.
+  useEffect(() => {
+    if (!activeId) return;
     let socket: WebSocket | null = null;
     let stopped = false;
     let timer = 0;
+    const refresh = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => void reload().catch(() => undefined), 300);
+    };
     const connect = () => {
       socket = new WebSocket(socketUrl());
+      socket.onopen = () => setConnected(true);
       socket.onmessage = (event) => {
         const data = JSON.parse(String(event.data)) as {
           type?: string;
           subject?: string;
           message_id?: number;
+          message_ids?: number[];
           session_id?: number;
+          account_id?: number;
+          error?: string;
         };
-        if (data.type === "sync.start") setSyncing(true);
-        if (data.type === "sync.done" || data.type === "sync.error" || data.type === "mail.new") {
-          setSyncing(false);
-          window.clearTimeout(timer);
-          timer = window.setTimeout(() => {
-            void reload();
-          }, 250);
+        if (data.type === "sync.start" && data.account_id) {
+          setSyncingAccounts((current) => new Set(current).add(data.account_id as number));
         }
-        if (data.type === "spam.auto" && data.message_id && data.session_id === boot.active_session_id) {
-          pushToast(`Filed “${data.subject || "a message"}” as spam`, data.message_id);
+        if (data.type === "sync.done" || data.type === "sync.error") {
+          setSyncingAccounts((current) => {
+            const next = new Set(current);
+            next.delete(data.account_id as number);
+            return next;
+          });
+          refresh();
+        }
+        if (data.type === "mail.new" || data.type === "mail.sent") {
+          refresh();
+          const settings = bootRef.current?.settings;
+          if (data.type === "mail.new" && settings?.notify && document.hidden && "Notification" in window && Notification.permission === "granted") {
+            const count = data.message_ids?.length ?? 1;
+            new Notification(count > 1 ? `${count} new messages` : "New message", { body: data.subject || "Session has new mail", silent: false });
+          }
+          if (data.type === "mail.sent") toast(`Scheduled message sent: ${data.subject || "(no subject)"}`, { tone: "success" });
+        }
+        if (data.type === "spam.auto" && data.message_id && data.session_id === bootRef.current?.active_session_id) {
+          const id = data.message_id;
+          toast(`Filed “${data.subject || "a message"}” as spam`, {
+            action: { label: "Undo", run: () => void post(`/api/messages/${id}/spam/undo`).then(refresh) },
+          });
         }
       };
       socket.onclose = () => {
+        setConnected(false);
         if (!stopped) window.setTimeout(connect, 1600);
       };
     };
@@ -241,53 +401,65 @@ export function MailProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(timer);
       socket?.close();
     };
-  }, [boot?.active_session_id, pushToast, reload]);
+  }, [activeId, reload, toast]);
 
+  const conversations = boot?.settings.conversations ?? true;
   const rows = useMemo(() => {
-    const grouped = conversations && !(mailbox.kind === "role" && mailbox.role === "spam");
-    return grouped ? groupThreads(messages) : messages;
+    const grouped = conversations && !(mailbox.kind === "role" && (mailbox.role === "spam" || mailbox.role === "trash"));
+    return grouped ? groupThreads(messages) : messages.map((item) => ({ ...item, threadIds: [item.id], threadUnread: !item.seen }));
   }, [messages, conversations, mailbox]);
 
+  // Keep the open message valid when the list changes.
   useEffect(() => {
-    if (mailbox.kind === "role" && mailbox.role === "drafts") return;
-    if (selectedId != null && messages.some((item) => item.id === selectedId)) return;
-    setSelectedId(messages[0]?.id ?? null);
-  }, [messages, mailbox, selectedId]);
+    if (selectedId == null) return;
+    if (messages.some((item) => item.id === selectedId)) return;
+    if (detail && detail.id === selectedId && detail.thread.some((item) => item.id === selectedId)) return;
+    setSelectedId(null);
+  }, [messages, selectedId, detail]);
 
+  const reloadBootOnly = useCallback(async () => {
+    try {
+      setBoot(await api<Bootstrap>("/api/bootstrap"));
+    } catch {
+      /* the next refresh will retry */
+    }
+  }, []);
+
+  // Message detail; opening marks it read.
   useEffect(() => {
     if (selectedId == null) {
       setDetail(null);
       return;
     }
     let live = true;
+    setDetailLoading(true);
     api<MessageDetail>(`/api/messages/${selectedId}`)
       .then(async (data) => {
         if (!live) return;
+        setDetail(data);
         if (!data.seen) {
-          const updated = await api<MessageDetail>(`/api/messages/${selectedId}/flags`, {
-            method: "POST",
-            body: JSON.stringify({ seen: true }),
-          });
+          const updated = await post<MessageDetail>(`/api/messages/${selectedId}/flags`, { seen: true });
           if (!live) return;
           setDetail(updated);
           setMessages((current) => current.map((item) => (item.id === updated.id ? { ...item, seen: true } : item)));
-          void reload();
-          return;
+          void reloadBootOnly();
         }
-        setDetail(data);
       })
       .catch((err: unknown) => {
-        if (live) pushToast(err instanceof Error ? err.message : "Couldn't open that message.");
+        if (live) toast(err instanceof Error ? err.message : "Couldn't open that message.", { tone: "error" });
+      })
+      .finally(() => {
+        if (live) setDetailLoading(false);
       });
     return () => {
       live = false;
     };
-  }, [selectedId, pushToast, reload]);
+  }, [selectedId, toast, reloadBootOnly]);
 
+  // Draft autosave.
   useEffect(() => {
-    if (!compose || sending) return;
-    if (!compose.accountId) return;
-    if (!compose.to && !compose.subject && !compose.body) return;
+    if (!compose || sending || !compose.accountId) return;
+    if (!compose.to && !compose.subject && !compose.html.replace(/<[^>]+>|&nbsp;|\s/g, "")) return;
     const snapshot = compose;
     const handle = window.setTimeout(() => {
       api<Draft>("/api/drafts", {
@@ -299,304 +471,622 @@ export function MailProvider({ children }: { children: ReactNode }) {
           cc: snapshot.cc,
           bcc: snapshot.bcc,
           subject: snapshot.subject,
-          body: snapshot.body,
+          body_html: snapshot.html,
           in_reply_to: snapshot.inReplyTo,
           references: snapshot.references,
           reply_to_message_id: snapshot.replyToMessageId,
         }),
       })
         .then((draft) => {
-          setCompose((current) => {
-            if (!current || current.draftId === draft.id) return current;
-            return { ...current, draftId: draft.id };
-          });
+          setCompose((current) => (current && current.key === snapshot.key && current.draftId !== draft.id ? { ...current, draftId: draft.id } : current));
         })
         .catch(() => undefined);
-    }, 800);
+    }, 900);
     return () => window.clearTimeout(handle);
   }, [compose, sending]);
 
+  const activeSession = useMemo(() => boot?.sessions.find((item) => item.id === boot.active_session_id) ?? null, [boot]);
   const sessionAccounts = useMemo(
     () => (boot ? boot.accounts.filter((account) => account.session_id === boot.active_session_id) : []),
     [boot],
   );
+  const sessionLabels = useMemo(
+    () => (boot ? boot.labels.filter((label) => label.session_id === boot.active_session_id) : []),
+    [boot],
+  );
+
+  const mailboxTitle = useMemo(() => {
+    if (debounced.trim() && searchAll) return "Search results";
+    if (mailbox.kind === "role") {
+      const base = ROLE_TITLES[mailbox.role] ?? mailbox.role;
+      const account = mailbox.accountId ? boot?.accounts.find((item) => item.id === mailbox.accountId) : null;
+      return account ? `${base} · ${account.email}` : base;
+    }
+    if (mailbox.kind === "label") return boot?.labels.find((item) => item.id === mailbox.labelId)?.name ?? "Label";
+    const folder = boot?.folders.find((item) => item.id === mailbox.folderId);
+    return folder ? folder.imap_name : "Folder";
+  }, [mailbox, boot, debounced, searchAll]);
 
   const setMailbox = useCallback((next: Mailbox) => {
     setMailboxState(next);
     setSelectedId(null);
+    setCheckedState(new Set());
+    setLimit(PAGE);
+    setQueryState("");
+    setDebounced("");
+    setQuickState("all");
   }, []);
 
-  const switchSession = useCallback(
-    async (id: number) => {
-      const data = await api<Bootstrap>("/api/settings", {
-        method: "PATCH",
-        body: JSON.stringify({ active_session_id: id }),
-      });
-      setBoot(data);
-      setMailboxState({ kind: "role", role: "inbox" });
-      setQuery("");
-      setSelectedId(null);
-      setCompose(null);
-      setPaletteOpen(false);
-    },
-    [],
-  );
+  const setQuery = useCallback((value: string) => {
+    setQueryState(value);
+    setCheckedState(new Set());
+  }, []);
+
+  const setQuick = useCallback((value: QuickFilter) => {
+    setQuickState(value);
+    setCheckedState(new Set());
+  }, []);
+
+  const switchSession = useCallback(async (id: number) => {
+    const data = await api<Bootstrap>("/api/settings", { method: "PATCH", body: JSON.stringify({ active_session_id: id }) });
+    setBoot(data);
+    setMailboxState({ kind: "role", role: "inbox" });
+    setQueryState("");
+    setDebounced("");
+    setQuickState("all");
+    setSelectedId(null);
+    setCheckedState(new Set());
+    setCompose(null);
+    setPaletteOpen(false);
+    setLimit(PAGE);
+  }, []);
 
   const moveSelection = useCallback(
     (delta: number) => {
       if (!rows.length) return;
-      const index = Math.max(0, rows.findIndex((item) => item.id === selectedId));
-      const next = rows[Math.min(rows.length - 1, Math.max(0, index + delta))];
+      const index = rows.findIndex((item) => item.id === selectedId || item.threadIds?.includes(selectedId ?? -1));
+      const next = rows[Math.min(rows.length - 1, Math.max(0, index < 0 ? 0 : index + delta))];
       if (next) setSelectedId(next.id);
     },
     [rows, selectedId],
   );
 
+  const toggleCheck = useCallback((id: number) => {
+    setCheckedState((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Rows stand for whole conversations; expand to every message of the thread in this view.
+  const targetIds = useCallback(
+    (explicit?: number[]) => {
+      const base = explicit ?? (checked.size ? [...checked] : selectedId != null ? [selectedId] : []);
+      const ids = new Set<number>();
+      for (const id of base) {
+        const row = rows.find((item) => item.id === id || item.threadIds?.includes(id));
+        (row?.threadIds ?? [id]).forEach((value) => ids.add(value));
+        ids.add(id);
+      }
+      return [...ids];
+    },
+    [checked, selectedId, rows],
+  );
+
+  const advanceFrom = useCallback(
+    (removed: Set<number>) => {
+      if (selectedId == null || !removed.has(selectedId)) return;
+      const index = rows.findIndex((item) => item.threadIds?.includes(selectedId));
+      const rest = rows.filter((item) => !(item.threadIds ?? [item.id]).some((id) => removed.has(id)));
+      const next = rest[Math.min(Math.max(index, 0), rest.length - 1)];
+      setSelectedId(next ? next.id : null);
+    },
+    [rows, selectedId],
+  );
+
+  const act = useCallback(
+    async (action: BulkAction, explicit?: number[]) => {
+      const ids = targetIds(explicit);
+      if (!ids.length) return;
+      const before = new Map(messages.filter((item) => ids.includes(item.id)).map((item) => [item.id, item.folder_role]));
+      const removed = new Set(ids);
+      if (LEAVES_VIEW.includes(action)) {
+        advanceFrom(removed);
+        setMessages((current) => current.filter((item) => !removed.has(item.id)));
+      } else {
+        setMessages((current) =>
+          current.map((item) =>
+            removed.has(item.id)
+              ? {
+                  ...item,
+                  seen: action === "read" ? true : action === "unread" ? false : item.seen,
+                  flagged: action === "flag" ? true : action === "unflag" ? false : item.flagged,
+                }
+              : item,
+          ),
+        );
+        if (detail && removed.has(detail.id)) {
+          setDetail({
+            ...detail,
+            seen: action === "read" ? true : action === "unread" ? false : detail.seen,
+            flagged: action === "flag" ? true : action === "unflag" ? false : detail.flagged,
+          });
+        }
+      }
+      setCheckedState(new Set());
+      try {
+        const result = await post<{ done: number; errors: string[] }>("/api/bulk", { ids, action });
+        if (result.errors.length) toast(result.errors[0], { tone: "error" });
+        const words: Partial<Record<BulkAction, string>> = {
+          archive: "Archived",
+          trash: "Moved to Trash",
+          inbox: "Moved to Inbox",
+          spam: "Reported as spam",
+          not_spam: "Moved to Inbox — sender allowlisted",
+          delete_forever: "Deleted forever",
+        };
+        const label = words[action];
+        if (label) {
+          const count = result.done;
+          const undoable = action === "archive" || action === "trash" || action === "inbox";
+          toast(`${label}${count > 1 ? ` · ${count} messages` : ""}`, {
+            action: undoable
+              ? {
+                  label: "Undo",
+                  run: () =>
+                    void (async () => {
+                      for (const [id, role] of before) {
+                        await post(`/api/messages/${id}/move`, { role }).catch(() => undefined);
+                      }
+                      await reload();
+                    })(),
+                }
+              : undefined,
+          });
+        }
+        await reload();
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "That didn't work.", { tone: "error" });
+        await reload();
+      }
+    },
+    [targetIds, messages, advanceFrom, detail, toast, reload],
+  );
+
+  const labelMessages = useCallback(
+    async (labelId: number, add: boolean, explicit?: number[]) => {
+      const ids = targetIds(explicit);
+      if (!ids.length) return;
+      await run(async () => {
+        await post("/api/bulk", { ids, action: add ? "label" : "unlabel", label_id: labelId });
+        if (detail && ids.includes(detail.id)) {
+          setDetail({ ...detail, labels: add ? [...new Set([...detail.labels, labelId])] : detail.labels.filter((item) => item !== labelId) });
+        }
+        await reload();
+      });
+    },
+    [targetIds, run, detail, reload],
+  );
+
+  const snoozeMessages = useCallback(
+    async (until: Date | null, explicit?: number[]) => {
+      const ids = targetIds(explicit);
+      if (!ids.length) return;
+      await run(async () => {
+        if (until) {
+          await post("/api/bulk", { ids, action: "snooze", until: until.toISOString() });
+          const removed = new Set(ids);
+          advanceFrom(removed);
+          setMessages((current) => current.filter((item) => !removed.has(item.id)));
+          toast(`Snoozed until ${until.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`, {
+            action: {
+              label: "Undo",
+              run: () => void post("/api/bulk", { ids, action: "snooze", until: null }).then(() => reload()),
+            },
+          });
+        } else {
+          await post("/api/bulk", { ids, action: "snooze", until: null });
+          toast("Unsnoozed — back in the inbox");
+        }
+        setCheckedState(new Set());
+        await reload();
+      });
+    },
+    [targetIds, run, advanceFrom, toast, reload],
+  );
+
+  const pinMessage = useCallback(
+    async (id: number, pinned: boolean) => {
+      await run(async () => {
+        const updated = await post<MessageDetail>(`/api/messages/${id}/pin`, { pinned });
+        if (detail?.id === id) setDetail(updated);
+        await reload();
+      });
+    },
+    [run, detail, reload],
+  );
+
+  const emptyFolder = useCallback(
+    async (role: "trash" | "spam") => {
+      if (!activeId) return;
+      await run(async () => {
+        const result = await post<{ deleted: number }>("/api/folders/empty", { session_id: activeId, role });
+        setSelectedId(null);
+        toast(`Deleted ${result.deleted} message${result.deleted === 1 ? "" : "s"} forever`);
+        await reload();
+      });
+    },
+    [activeId, run, toast, reload],
+  );
+
+  const undoSpam = useCallback(
+    async (id: number) => {
+      await run(async () => {
+        await post(`/api/messages/${id}/spam/undo`);
+        await reload();
+      });
+    },
+    [run, reload],
+  );
+
   const openCompose = useCallback(
     (seed?: Partial<ComposeState>) => {
-      const accountId = seed?.accountId ?? sessionAccounts[0]?.id ?? null;
-      setCompose({ ...emptyCompose(accountId), ...seed, accountId: seed?.accountId ?? accountId });
+      const accountId = seed?.accountId ?? (mailbox.kind === "role" ? mailbox.accountId : undefined) ?? sessionAccounts[0]?.id ?? null;
+      const account = sessionAccounts.find((item) => item.id === accountId);
+      const base = emptyCompose(accountId);
+      const html = seed?.html ?? `<p><br></p>${signatureBlock(account) ? `<p><br></p>${signatureBlock(account)}` : ""}`;
+      setCompose({ ...base, ...seed, html, accountId, key: base.key });
     },
-    [sessionAccounts],
+    [sessionAccounts, mailbox],
   );
 
   const updateCompose = useCallback((patch: Partial<ComposeState>) => {
     setCompose((current) => (current ? { ...current, ...patch } : current));
   }, []);
 
-  const closeCompose = useCallback(() => setCompose(null), []);
+  const closeCompose = useCallback(() => {
+    setCompose(null);
+    setTick((value) => value + 1);
+  }, []);
+
+  const discardCompose = useCallback(async () => {
+    const current = compose;
+    setCompose(null);
+    if (current?.draftId) {
+      await api(`/api/drafts/${current.draftId}`, { method: "DELETE" }).catch(() => undefined);
+    }
+    toast("Draft discarded");
+    setTick((value) => value + 1);
+  }, [compose, toast]);
 
   const reply = useCallback(
     (all = false) => {
       if (!detail) return;
-      const mine = detail.account_email;
+      const account = sessionAccounts.find((item) => item.id === detail.account_id);
+      const sig = signatureBlock(account);
+      const cc = all
+        ? detail.cc.map((item) => item.email).filter((email) => email.toLowerCase() !== detail.account_email.toLowerCase()).join(", ")
+        : "";
+      const to = all
+        ? replyAllTo({ ...detail, cc: [] }, detail.account_email)
+        : detail.folder_role === "sent"
+          ? detail.to.map((item) => item.email).join(", ")
+          : detail.from_email;
       openCompose({
         accountId: detail.account_id,
-        to: all ? replyAllTo(detail, mine) : detail.from_email,
-        cc: "",
+        to,
+        cc,
+        showCc: Boolean(cc),
         subject: subjectWith("Re:", detail.subject),
-        body: quoteBody(detail),
+        html: `<p><br></p>${sig ? `<p><br></p>${sig}` : ""}${quoteHtml(detail)}`,
         inReplyTo: detail.message_id,
         references: [...detail.references, detail.message_id].filter(Boolean),
         replyToMessageId: detail.id,
-        showCc: false,
       });
     },
-    [detail, openCompose],
+    [detail, openCompose, sessionAccounts],
   );
 
   const forward = useCallback(() => {
     if (!detail) return;
+    const account = sessionAccounts.find((item) => item.id === detail.account_id);
+    const sig = signatureBlock(account);
     openCompose({
       accountId: detail.account_id,
       subject: subjectWith("Fwd:", detail.subject),
-      body: quoteBody(detail),
+      html: `<p><br></p>${sig ? `<p><br></p>${sig}` : ""}${forwardHtml(detail)}`,
     });
-  }, [detail, openCompose]);
+  }, [detail, openCompose, sessionAccounts]);
 
-  const refreshAfter = useCallback(async () => {
-    setSelectedId(null);
-    await reload();
-  }, [reload]);
+  const pendingSend = useRef<number | null>(null);
 
-  const send = useCallback(async () => {
-    if (!compose?.accountId) return;
-    if (!compose.to.trim()) {
-      pushToast("Add a recipient.");
-      return;
-    }
-    setSending(true);
-    try {
-      await api("/api/send", {
-        method: "POST",
-        body: JSON.stringify({
-          account_id: compose.accountId,
-          to: compose.to,
-          cc: compose.cc,
-          bcc: compose.bcc,
-          subject: compose.subject,
-          body: compose.body,
-          in_reply_to: compose.inReplyTo,
-          references: compose.references,
-          reply_to_message_id: compose.replyToMessageId,
-          draft_id: compose.draftId,
-          attachments: compose.files,
-        }),
-      });
-      setCompose(null);
-      setMailboxState({ kind: "role", role: "sent" });
-      setQuery("");
-      setDebounced("");
-      setSelectedId(null);
-      pushToast("Sent.");
-      await reload();
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Couldn't send.");
-    } finally {
-      setSending(false);
-    }
-  }, [compose, pushToast, reload]);
-
-  const moveMessage = useCallback(
-    async (id: number, role: string) => {
+  const deliver = useCallback(
+    async (draft: ComposeState, sendAt?: Date) => {
+      setSending(true);
       try {
-        await api(`/api/messages/${id}/move`, { method: "POST", body: JSON.stringify({ role }) });
-        await refreshAfter();
-      } catch (err) {
-        pushToast(err instanceof Error ? err.message : "Couldn't move that message.");
-      }
-    },
-    [pushToast, refreshAfter],
-  );
-
-  const moveCurrent = useCallback(
-    async (role: string) => {
-      if (!detail) return;
-      await moveMessage(detail.id, role);
-    },
-    [detail, moveMessage],
-  );
-
-  const reportSpam = useCallback(
-    async (id?: number) => {
-      const messageId = id ?? detail?.id;
-      if (!messageId) return;
-      try {
-        await api(`/api/messages/${messageId}/spam`, { method: "POST" });
-        await refreshAfter();
-      } catch (err) {
-        pushToast(err instanceof Error ? err.message : "Couldn't mark that as spam.");
-      }
-    },
-    [detail, pushToast, refreshAfter],
-  );
-
-  const notSpam = useCallback(
-    async (id: number) => {
-      try {
-        await api(`/api/messages/${id}/not-spam`, { method: "POST" });
-        await refreshAfter();
-      } catch (err) {
-        pushToast(err instanceof Error ? err.message : "Couldn't move that back.");
-      }
-    },
-    [pushToast, refreshAfter],
-  );
-
-  const undoSpam = useCallback(
-    async (id: number) => {
-      try {
-        await api(`/api/messages/${id}/spam/undo`, { method: "POST" });
-        await reload();
-      } catch (err) {
-        pushToast(err instanceof Error ? err.message : "Couldn't undo that.");
-      }
-    },
-    [pushToast, reload],
-  );
-
-  const toggleFlag = useCallback(async () => {
-    if (!detail) return;
-    try {
-      const updated = await api<MessageDetail>(`/api/messages/${detail.id}/flags`, {
-        method: "POST",
-        body: JSON.stringify({ flagged: !detail.flagged }),
-      });
-      setDetail(updated);
-      setMessages((current) => current.map((item) => (item.id === updated.id ? { ...item, flagged: updated.flagged } : item)));
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Couldn't update the flag.");
-    }
-  }, [detail, pushToast]);
-
-  const run = useCallback(
-    async (work: () => Promise<void>) => {
-      try {
-        await work();
-      } catch (err) {
-        pushToast(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "That didn't work.");
-      }
-    },
-    [pushToast],
-  );
-
-  const value: MailValue = {
-    loading,
-    error,
-    boot,
-    providers,
-    mailbox,
-    setMailbox,
-    query,
-    setQuery,
-    conversations,
-    setConversations,
-    messages,
-    rows,
-    drafts,
-    selectedId,
-    select: setSelectedId,
-    detail,
-    syncing,
-    loadImages,
-    setLoadImages,
-    compose,
-    sending,
-    paletteOpen,
-    setPaletteOpen,
-    settingsOpen,
-    setSettingsOpen,
-    toasts,
-    dismissToast,
-    sessionAccounts,
-    switchSession: (id) => run(() => switchSession(id)),
-    moveSelection,
-    openCompose,
-    updateCompose,
-    closeCompose,
-    reply,
-    forward,
-    send,
-    archive: () => moveCurrent("archive"),
-    trash: () => moveCurrent("trash"),
-    moveMessage,
-    reportSpam,
-    notSpam,
-    undoSpam,
-    toggleFlag,
-    seedDemo: () => run(async () => { await api("/api/demo/seed", { method: "POST" }); await reload(); }),
-    addAccount: (body) => run(async () => { await api("/api/accounts", { method: "POST", body: JSON.stringify(body) }); await reload(); }),
-    updateAccount: (id, body) => run(async () => { await api(`/api/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }); await reload(); }),
-    removeAccount: (id) => run(async () => { await api(`/api/accounts/${id}`, { method: "DELETE" }); await reload(); }),
-    saveSettings: (body) => run(async () => { setBoot(await api<Bootstrap>("/api/settings", { method: "PATCH", body: JSON.stringify(body) })); }),
-    renameSession: (id, name) => run(async () => { await api(`/api/sessions/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }); await reload(); }),
-    createSession: (name) => run(async () => { await api("/api/sessions", { method: "POST", body: JSON.stringify({ name }) }); await reload(); }),
-    startOAuth: (provider) =>
-      run(async () => {
-        if (!boot) return;
-        pushToast("Waiting for the browser sign-in…");
-        await api("/api/oauth/start", {
-          method: "POST",
-          body: JSON.stringify({ provider, session_id: boot.active_session_id }),
+        const result = await post<{ scheduled?: boolean; send_at?: string }>("/api/send", {
+          account_id: draft.accountId,
+          to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
+          subject: draft.subject,
+          body_html: draft.html,
+          in_reply_to: draft.inReplyTo,
+          references: draft.references,
+          reply_to_message_id: draft.replyToMessageId,
+          draft_id: draft.draftId,
+          attachments: draft.files.map(({ filename, content_type, data_base64 }) => ({ filename, content_type, data_base64 })),
+          priority: draft.priority,
+          read_receipt: draft.readReceipt,
+          send_at: sendAt ? sendAt.toISOString() : null,
         });
+        if (result?.scheduled) {
+          toast(`Scheduled for ${new Date(result.send_at as string).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`, { tone: "success" });
+        } else {
+          toast("Message sent", { tone: "success" });
+        }
         await reload();
-        pushToast("Account connected.");
-      }),
-    reload,
-    openDraft: (draft) =>
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "Couldn't send.", { tone: "error", ttl: 9000 });
+        setCompose({ ...draft, minimized: false });
+      } finally {
+        setSending(false);
+      }
+    },
+    [toast, reload],
+  );
+
+  const send = useCallback(
+    async (sendAt?: Date) => {
+      if (!compose?.accountId) return;
+      if (!compose.to.trim() && !compose.cc.trim() && !compose.bcc.trim()) {
+        toast("Add at least one recipient.", { tone: "error" });
+        return;
+      }
+      const invalid = [compose.to, compose.cc, compose.bcc]
+        .flatMap((field) => field.split(/[,;]/))
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => (/<([^>]+)>/.exec(item)?.[1] ?? item).trim())
+        .find((email) => !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email));
+      if (invalid) {
+        toast(`“${invalid}” isn't a valid email address.`, { tone: "error" });
+        return;
+      }
+      const draft = compose;
+      setCompose(null);
+      const delay = sendAt ? 0 : (boot?.settings.undo_send_seconds ?? 0);
+      if (delay <= 0) {
+        await deliver(draft, sendAt);
+        return;
+      }
+      const id = Date.now();
+      setToasts((current) => [
+        ...current,
+        {
+          id,
+          text: "Sending…",
+          action: {
+            label: "Undo",
+            run: () => {
+              if (pendingSend.current) window.clearTimeout(pendingSend.current);
+              pendingSend.current = null;
+              setCompose({ ...draft, minimized: false });
+            },
+          },
+        },
+      ]);
+      pendingSend.current = window.setTimeout(() => {
+        pendingSend.current = null;
+        setToasts((current) => current.filter((item) => item.id !== id));
+        void deliver(draft);
+      }, delay * 1000);
+      window.setTimeout(() => setToasts((current) => current.filter((item) => item.id !== id)), delay * 1000);
+    },
+    [compose, boot?.settings.undo_send_seconds, deliver, toast],
+  );
+
+  const openDraft = useCallback(
+    (draft: Draft) => {
+      const html = /<[a-z][\s\S]*>/i.test(draft.body) ? draft.body : textToHtml(draft.body);
       openCompose({
         accountId: draft.account_id,
         to: draft.to,
         cc: draft.cc,
         bcc: draft.bcc,
         subject: draft.subject,
-        body: draft.body,
+        html,
         inReplyTo: draft.in_reply_to,
         references: draft.references,
         replyToMessageId: draft.reply_to_message_id,
         draftId: draft.id,
         showCc: Boolean(draft.cc || draft.bcc),
+      });
+    },
+    [openCompose],
+  );
+
+  const editScheduled = useCallback(
+    async (item: OutboxItem) => {
+      await run(async () => {
+        const removed = await api<OutboxItem>(`/api/outbox/${item.id}`, { method: "DELETE" });
+        const payload = removed.payload as Record<string, unknown>;
+        openCompose({
+          accountId: Number(payload.account_id),
+          to: String(payload.to ?? ""),
+          cc: String(payload.cc ?? ""),
+          bcc: String(payload.bcc ?? ""),
+          subject: String(payload.subject ?? ""),
+          html: String(payload.body_html || textToHtml(String(payload.body ?? ""))),
+          showCc: Boolean(payload.cc || payload.bcc),
+        });
+        toast("Scheduled send cancelled — edit and send again");
+        await reload();
+      });
+    },
+    [run, openCompose, toast, reload],
+  );
+
+  const syncNow = useCallback(async () => {
+    await run(async () => {
+      const accounts = sessionAccounts.filter((item) => item.auth_type !== "local");
+      if (!accounts.length) {
+        toast("Sample accounts don't sync. Add a real account to fetch mail.");
+        await reload();
+        return;
+      }
+      await Promise.all(accounts.map((item) => post(`/api/accounts/${item.id}/sync`)));
+      toast(`Checking ${accounts.length} account${accounts.length === 1 ? "" : "s"} for new mail…`);
+    });
+  }, [run, sessionAccounts, toast, reload]);
+
+  const createLabel = useCallback(
+    async (name: string, color?: string) => {
+      if (!activeId) return null;
+      try {
+        const label = await post<Label>("/api/labels", { session_id: activeId, name, color: color ?? "" });
+        await reload();
+        return label;
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "Couldn't create that label.", { tone: "error" });
+        return null;
+      }
+    },
+    [activeId, reload, toast],
+  );
+
+  const value: MailValue = {
+    loading,
+    error,
+    connected,
+    boot,
+    providers,
+    activeSession,
+    sessionAccounts,
+    sessionLabels,
+    mailbox,
+    setMailbox,
+    mailboxTitle,
+    query,
+    setQuery,
+    searchAll,
+    setSearchAll,
+    quick,
+    setQuick,
+    messages,
+    rows,
+    total,
+    loadMore: () => setLimit((value) => value + PAGE),
+    listLoading,
+    drafts,
+    outbox,
+    selectedId,
+    select: setSelectedId,
+    detail,
+    detailLoading,
+    checked,
+    toggleCheck,
+    setChecked: setCheckedState,
+    syncing: syncingAccounts.size > 0,
+    remoteAllowed: (id) => Boolean(boot?.settings.load_remote_images) || remoteIds.has(id),
+    allowRemote: (id) => setRemoteIds((current) => new Set(current).add(id)),
+    compose,
+    sending,
+    openCompose,
+    updateCompose,
+    closeCompose,
+    discardCompose,
+    send,
+    reply,
+    forward,
+    openDraft,
+    editScheduled,
+    paletteOpen,
+    setPaletteOpen,
+    settingsOpen,
+    settingsTab,
+    openSettings: (tab) => {
+      if (tab) setSettingsTab(tab);
+      setSettingsOpen(true);
+      setPaletteOpen(false);
+    },
+    closeSettings: () => setSettingsOpen(false),
+    helpOpen,
+    setHelpOpen,
+    toasts,
+    toast,
+    dismissToast,
+    switchSession: (id) => run(() => switchSession(id)),
+    moveSelection,
+    targetIds,
+    act,
+    labelMessages,
+    snoozeMessages,
+    pinMessage,
+    emptyFolder,
+    undoSpam,
+    syncNow,
+    createLabel,
+    seedDemo: () =>
+      run(async () => {
+        await post("/api/demo/seed");
+        await reload();
       }),
+    addAccount: async (body) => {
+      try {
+        await post("/api/accounts", body);
+        await reload();
+        toast("Account added — syncing now", { tone: "success" });
+        return true;
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "Couldn't add that account.", { tone: "error", ttl: 9000 });
+        return false;
+      }
+    },
+    updateAccount: (id, body) =>
+      run(async () => {
+        await api(`/api/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await reload();
+      }),
+    removeAccount: (id) =>
+      run(async () => {
+        await api(`/api/accounts/${id}`, { method: "DELETE" });
+        await reload();
+        toast("Account removed");
+      }),
+    saveSettings: (body) =>
+      run(async () => {
+        setBoot(await api<Bootstrap>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }));
+        setTick((value) => value + 1);
+      }),
+    renameSession: (id, name, color) =>
+      run(async () => {
+        await api(`/api/sessions/${id}`, { method: "PATCH", body: JSON.stringify({ name, color }) });
+        await reload();
+      }),
+    createSession: (name) =>
+      run(async () => {
+        await post("/api/sessions", { name });
+        await reload();
+        toast(`Session “${name}” created`, { tone: "success" });
+      }),
+    deleteSession: (id) =>
+      run(async () => {
+        await api(`/api/sessions/${id}`, { method: "DELETE" });
+        await reload();
+      }),
+    startOAuth: (provider, sessionId) =>
+      run(async () => {
+        if (!boot) return;
+        toast("Finish signing in in your browser…", { ttl: 12000 });
+        await post("/api/oauth/start", { provider, session_id: sessionId ?? boot.active_session_id });
+        await reload();
+        toast("Account connected", { tone: "success" });
+      }),
+    reload,
+    run,
   };
 
   return <MailContext.Provider value={value}>{children}</MailContext.Provider>;

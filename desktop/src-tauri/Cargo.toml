@@ -1,6 +1,6 @@
 [package]
 name = "session-desktop"
-version = "0.1.0"
+version = "1.0.0"
 description = "Session mail desktop shell"
 authors = ["Khotso Tsoaela"]
 edition = "2021"

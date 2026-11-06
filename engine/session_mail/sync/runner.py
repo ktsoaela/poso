@@ -21,7 +21,10 @@ from session_mail.mail.imap_client import (
     search_uids,
     select_folder,
     size_from_item,
+    store_flags,
 )
+from session_mail import rules as rule_engine
+from session_mail.audit import record
 from session_mail.mail.parse import parse_header_and_preview
 from session_mail.mail.store import folder_by_role, save_remote_folders, spam_text, upsert_parsed
 from session_mail.models import Account, Folder, Message
@@ -155,6 +158,8 @@ def _sync_folder(client, account_id: int, session_id: int, folder_id: int, name:
         wanted = sorted(set(recent + fresh))
     created: list[int] = []
     pending_moves: list[tuple[int, int, float, str]] = []
+    flag_ops: list[tuple[int, bool | None, bool | None]] = []
+    rule_moves: list[tuple[int, int, str]] = []
     for offset in range(0, len(wanted), 25):
         chunk = wanted[offset : offset + 25]
         fetched = fetch_headers(client, chunk)
@@ -181,6 +186,8 @@ def _sync_folder(client, account_id: int, session_id: int, folder_id: int, name:
                 if action == "move":
                     pending_moves.append((row.id, uid, score, row.subject))
                     row.auto_spam = True
+                    continue
+                _plan_rules(db, session_id, row, uid, flag_ops, rule_moves)
     if pending_moves and role == "inbox":
         dest_name = _spam_mailbox(client, account_id)
         if dest_name:
@@ -210,11 +217,78 @@ def _sync_folder(client, account_id: int, session_id: int, folder_id: int, name:
                         "account_id": account_id,
                     }
                 )
+    for uid, seen, flagged in flag_ops:
+        try:
+            store_flags(client, uid, seen=seen, flagged=flagged)
+        except Exception:
+            log.exception("Rule flag update failed")
+    for message_id, uid, dest_role in rule_moves:
+        dest_name = _role_mailbox(client, account_id, dest_role)
+        if not dest_name:
+            continue
+        try:
+            move_uid(client, uid, dest_name)
+        except Exception:
+            log.exception("Rule move failed")
+            continue
+        with session_scope() as db:
+            row = db.get(Message, message_id)
+            dest = folder_by_role(db, account_id, dest_role)
+            if row is not None and dest is not None:
+                row.folder_id = dest.id
     with session_scope() as db:
         folder = db.get(Folder, folder_id)
         if folder is not None and uids:
             folder.highest_uid = max(uids)
     return created
+
+
+def _plan_rules(db, session_id: int, row: Message, uid: int, flag_ops: list, rule_moves: list) -> None:
+    planned = rule_engine.plan(db, session_id, row)
+    if not planned:
+        return
+    seen = flagged = None
+    move_to = None
+    names = []
+    for rule, action in planned:
+        names.append(rule["name"])
+        kind = action["type"]
+        if kind == "label":
+            rule_engine.apply_label(db, row.id, action["label_id"])
+        elif kind == "read":
+            row.seen = seen = True
+        elif kind == "flag":
+            row.flagged = flagged = True
+        elif move_to is None:
+            move_to = rule_engine.target_role(action)
+    if seen is not None or flagged is not None:
+        flag_ops.append((uid, seen, flagged))
+    if move_to:
+        rule_moves.append((row.id, uid, move_to))
+    record(
+        db,
+        "rule.apply",
+        session_id=session_id,
+        account_id=row.account_id,
+        target=row.subject or "",
+        detail={"rules": sorted(set(names)), "move": move_to},
+        actor="rule",
+    )
+
+
+def _role_mailbox(client, account_id: int, role: str) -> str | None:
+    with session_scope() as db:
+        folder = folder_by_role(db, account_id, role)
+        if folder is not None:
+            return folder.imap_name
+    name = ROLE_MAILBOX.get(role)
+    if not name:
+        return None
+    ensure_mailbox(client, name)
+    with session_scope() as db:
+        if folder_by_role(db, account_id, role) is None:
+            db.add(Folder(account_id=account_id, imap_name=name, role=role))
+    return name
 
 
 def _spam_mailbox(client, account_id: int) -> str | None:

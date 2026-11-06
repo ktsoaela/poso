@@ -51,6 +51,7 @@ class Account(Base):
     smtp_mode: Mapped[str] = mapped_column(String(20), default="starttls")
     color: Mapped[str] = mapped_column(String(32), default="#0e6b52")
     sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    signature: Mapped[str] = mapped_column(Text, default="")
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -96,6 +97,8 @@ class Message(Base):
     in_reply_to: Mapped[str] = mapped_column(String(998), default="")
     references_json: Mapped[str] = mapped_column(Text, default="[]")
     size: Mapped[int] = mapped_column(Integer, default=0)
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Attachment(Base):
@@ -107,6 +110,8 @@ class Attachment(Base):
     content_type: Mapped[str] = mapped_column(String(200), default="application/octet-stream")
     size: Mapped[int] = mapped_column(Integer, default=0)
     storage_name: Mapped[str] = mapped_column(String(200), default="")
+    content_id: Mapped[str] = mapped_column(String(500), default="")
+    inline: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Draft(Base):
@@ -169,3 +174,62 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(80), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class Label(Base):
+    __tablename__ = "labels"
+    __table_args__ = (UniqueConstraint("session_id", "name", name="uq_label_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    color: Mapped[str] = mapped_column(String(32), default="#6366f1")
+
+
+class MessageLabel(Base):
+    __tablename__ = "message_labels"
+    __table_args__ = (UniqueConstraint("message_id", "label_id", name="uq_message_label"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    label_id: Mapped[int] = mapped_column(ForeignKey("labels.id", ondelete="CASCADE"), index=True)
+
+
+class Rule(Base):
+    __tablename__ = "rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    match: Mapped[str] = mapped_column(String(8), default="all")
+    conditions_json: Mapped[str] = mapped_column(Text, default="[]")
+    actions_json: Mapped[str] = mapped_column(Text, default="[]")
+    stop: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    session_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actor: Mapped[str] = mapped_column(String(40), default="you")
+    action: Mapped[str] = mapped_column(String(60), index=True)
+    target: Mapped[str] = mapped_column(Text, default="")
+    detail: Mapped[str] = mapped_column(Text, default="")
+
+
+class OutboxItem(Base):
+    __tablename__ = "outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    send_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="scheduled")
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

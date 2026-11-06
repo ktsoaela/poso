@@ -58,7 +58,7 @@ PRESETS: dict[str, dict] = {
     },
 }
 
-ACCOUNT_COLORS = ["#1d4e89", "#0e6b52", "#8d4a32", "#6b4c9a", "#a15c07", "#3f5d4e"]
+ACCOUNT_COLORS = ["#4f46e5", "#0ea5e9", "#10b981", "#8b5cf6", "#f43f5e", "#f59e0b"]
 
 
 def apply_preset(

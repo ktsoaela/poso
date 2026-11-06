@@ -122,6 +122,8 @@ def write_attachments(db: Session, message: Message, attachments: list[ParsedAtt
                 content_type=item.content_type or "application/octet-stream",
                 size=len(item.data),
                 storage_name=storage_name,
+                content_id=item.content_id or "",
+                inline=bool(item.inline),
             )
         )
 

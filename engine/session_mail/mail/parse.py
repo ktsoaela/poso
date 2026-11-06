@@ -11,9 +11,23 @@ from email.utils import getaddresses, parsedate_to_datetime
 import nh3
 
 _TAG = re.compile(r"<[^>]+>")
+_NON_TEXT = re.compile(r"<(style|script|head|title)\b[^>]*>.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
 _SPACE = re.compile(r"\s+")
 _MAX_TEXT = 1_000_000
 _MAX_HTML = 1_500_000
+
+
+_LAYOUT_ATTRS = {
+    "style", "class", "id", "align", "valign", "bgcolor", "background", "width", "height",
+    "border", "cellpadding", "cellspacing", "color", "face", "size", "dir", "lang", "role",
+    "colspan", "rowspan", "nowrap", "start", "type",
+}
+_TAGS = set(nh3.ALLOWED_TAGS) | {"style", "font", "center"}
+_ATTRIBUTES = {key: set(value) for key, value in nh3.ALLOWED_ATTRIBUTES.items()}
+_ATTRIBUTES["*"] = _LAYOUT_ATTRS
+_ATTRIBUTES.setdefault("img", set()).update({"src", "alt", "title", "width", "height"})
+_ATTRIBUTES.setdefault("a", set()).update({"href", "title", "target"})
+_URL_SCHEMES = {"http", "https", "mailto", "tel", "cid", "data"}
 
 
 @dataclass
@@ -21,6 +35,8 @@ class ParsedAttachment:
     filename: str
     content_type: str
     data: bytes
+    content_id: str = ""
+    inline: bool = False
 
 
 @dataclass
@@ -92,15 +108,32 @@ def _references(value: str | None) -> list[str]:
 
 
 def html_to_text(html: str) -> str:
-    text = _TAG.sub(" ", html)
+    import html as html_lib
+
+    text = _TAG.sub(" ", _NON_TEXT.sub(" ", html))
+    text = html_lib.unescape(text)
     return _SPACE.sub(" ", text).strip()
 
 
 def sanitize_html(html: str) -> str:
+    """Keep the sender's layout (CSS, tables, inline images) and drop anything executable.
+
+    The reader also renders mail inside a sandboxed iframe with a CSP, so remote
+    loads stay blocked until the person asks for them.
+    """
     if not html:
         return ""
     try:
-        cleaned = nh3.clean(html)
+        cleaned = nh3.clean(
+            html,
+            tags=_TAGS,
+            clean_content_tags={"script"},
+            attributes=_ATTRIBUTES,
+            generic_attribute_prefixes={"data-"},
+            url_schemes=_URL_SCHEMES,
+            link_rel="noopener noreferrer",
+            strip_comments=True,
+        )
     except Exception:
         return ""
     if len(cleaned) > _MAX_HTML:
@@ -128,12 +161,26 @@ def _walk_parts(message: Message) -> tuple[str, str, list[ParsedAttachment]]:
         filename = part.get_filename()
         if filename:
             filename = decode_header_value(filename)
-        if disposition == "attachment" or (filename and content_type not in {"text/plain", "text/html"}):
+        content_id = (part.get("Content-ID") or "").strip().strip("<>")
+        is_text = content_type in {"text/plain", "text/html"}
+        if content_id and not is_text and disposition != "attachment":
+            attachments.append(
+                ParsedAttachment(
+                    filename=filename or f"inline-{content_id[:40]}",
+                    content_type=content_type,
+                    data=payload,
+                    content_id=content_id,
+                    inline=True,
+                )
+            )
+            continue
+        if disposition == "attachment" or (filename and not is_text):
             attachments.append(
                 ParsedAttachment(
                     filename=filename or "attachment",
                     content_type=content_type,
                     data=payload,
+                    content_id=content_id,
                 )
             )
             continue

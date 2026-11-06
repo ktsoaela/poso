@@ -69,8 +69,9 @@ fn spawn_engine(app: &tauri::AppHandle) -> Result<EngineInfo, Box<dyn std::error
     let dir = data_dir();
     std::fs::create_dir_all(&dir)?;
     let engine_dir = app.path().resource_dir()?.join("engine-dist");
-    let mut command = app.shell().sidecar("session-mail-engine")?;
-    command
+    let command = app
+        .shell()
+        .sidecar("session-mail-engine")?
         .env("SESSION_HOST", "127.0.0.1")
         .env("SESSION_PORT", port.to_string())
         .env("SESSION_TOKEN", &token)

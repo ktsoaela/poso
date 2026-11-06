@@ -49,9 +49,34 @@ Allowlisted senders are not auto-filed. Remote images stay blocked until **Load 
 | `R` | Reply |
 | `E` | Archive |
 | `#` | Delete |
+| `A` / `F` | Reply all / forward |
+| `S` | Flag or unflag |
+| `!` | Report spam |
+| `X` | Select the conversation |
+| `Shift+U` / `Shift+I` | Mark unread / read |
+| `/` | Search |
+| `?` | Show all shortcuts |
 | `J`, `K` | Next and previous message |
 | `Ctrl+Enter` | Send |
 | `Escape` | Close the palette, settings, or composer |
+
+## Labels, rules, and snooze
+
+Labels belong to a session and work across all of its accounts. Create them from the sidebar, from the label menu on a message, or in Settings → Labels.
+
+Rules (Settings → Rules & filters) check new inbox mail against conditions on From, To/Cc, Subject, Body, or the receiving account. Matching mail can be labelled, marked read, flagged, archived, sent to Spam, or deleted. **Run on inbox now** applies the rules to mail that is already there.
+
+Snooze hides a conversation until the chosen time. When the time passes it comes back to the inbox as unread. Scheduled messages wait in **Scheduled** until they are sent. Opening one cancels the schedule so you can edit it.
+
+## Search operators
+
+`from:` `to:` `subject:` `label:` `account:` `in:inbox|sent|archive|spam|trash` `has:attachment` `is:unread|read|flagged|snoozed` `after:YYYY-MM-DD` `before:YYYY-MM-DD` `newer:7d` `older:1m`. Combine them with plain words. Search covers every folder in the session by default. The search popover can limit it to the current folder.
+
+## Import, export, and audit
+
+Settings → Import & export writes MBOX, a zip of EML files, a JSON backup (mail, labels, rules, signatures, block lists), or a contacts CSV. Imports accept `.eml`, `.mbox`, and `.zip`. Re-importing the same file does not create duplicates. For IMAP accounts the import can also be uploaded to the server.
+
+Settings → Audit log lists every change Session makes. You can filter by text, event type, session, and date, and export the log as CSV or JSON.
 
 ## Develop
 

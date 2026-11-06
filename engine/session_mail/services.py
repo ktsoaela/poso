@@ -8,12 +8,15 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import OperationalError
 
+from session_mail import __version__
+from session_mail.audit import record
 from session_mail.auth.oauth import app_credentials, fresh_access_token, run_oauth, save_app_credentials
 from session_mail.config import OAUTH_REDIRECT_URI
 from session_mail.db import fts_search_ids, session_scope
+from session_mail.search import parse as parse_search
 from session_mail.mail.errors import MailError
 from session_mail.mail.imap_client import (
     append_raw,
@@ -25,7 +28,7 @@ from session_mail.mail.imap_client import (
     select_folder,
     store_flags,
 )
-from session_mail.mail.parse import parse_message
+from session_mail.mail.parse import html_to_text, parse_message
 from session_mail.mail.presets import ACCOUNT_COLORS, PRESETS, apply_preset
 from session_mail.mail.roles import assert_email
 from session_mail.mail.smtp_client import send_message
@@ -44,14 +47,28 @@ from session_mail.models import (
     BlockEntry,
     Draft,
     Folder,
+    Label,
     MailSession,
     Message,
+    MessageLabel,
+    OutboxItem,
     Setting,
 )
 from session_mail.secrets import secret_delete, secret_get, secret_put
 from session_mail.spam.bayes import forget, remember, train
 
-SESSION_COLORS = ["#1d4e89", "#8d4a32", "#0e6b52", "#6b4c9a", "#a15c07"]
+SESSION_COLORS = ["#4f46e5", "#e11d48", "#0d9488", "#7c3aed", "#d97706"]
+VIRTUAL_ROLES = {"flagged", "snoozed", "unread", "everything"}
+SETTING_DEFAULTS = {
+    "theme": "system",
+    "density": "comfortable",
+    "load_remote_images": "0",
+    "reading_pane": "right",
+    "accent": "indigo",
+    "undo_send_seconds": "5",
+    "notify": "1",
+    "conversations": "1",
+}
 ROLE_MAILBOX = {
     "inbox": "INBOX",
     "sent": "Sent",
@@ -141,6 +158,7 @@ def _account_out(row: Account) -> dict:
         "smtp_mode": row.smtp_mode,
         "color": row.color,
         "sync_enabled": row.sync_enabled,
+        "signature": row.signature or "",
         "last_sync_at": _iso(row.last_sync_at),
         "last_error": row.last_error or "",
     }
@@ -156,8 +174,37 @@ def _folder_out(row: Folder, unread: int = 0) -> dict:
     }
 
 
-def _message_out(row: Message, account: Account, folder: Folder) -> dict:
+def _extras(db, ids: list[int]) -> tuple[dict[int, list[int]], set[int]]:
+    """Labels and attachment presence for a page of messages, in two queries."""
+    if not ids:
+        return {}, set()
+    labels: dict[int, list[int]] = {}
+    for message_id, label_id in db.execute(
+        select(MessageLabel.message_id, MessageLabel.label_id).where(MessageLabel.message_id.in_(ids))
+    ).all():
+        labels.setdefault(int(message_id), []).append(int(label_id))
+    with_files = {
+        int(row[0])
+        for row in db.execute(
+            select(Attachment.message_id).where(Attachment.message_id.in_(ids), Attachment.inline.is_(False)).distinct()
+        ).all()
+    }
+    return labels, with_files
+
+
+def _message_out(
+    row: Message,
+    account: Account,
+    folder: Folder,
+    labels: dict[int, list[int]] | None = None,
+    with_files: set[int] | None = None,
+) -> dict:
     return {
+        "labels": (labels or {}).get(row.id, []),
+        "has_attachments": row.id in (with_files or set()),
+        "snoozed_until": _iso(row.snoozed_until),
+        "pinned": bool(row.pinned),
+        "folder_name": folder.imap_name,
         "id": row.id,
         "account_id": row.account_id,
         "folder_id": row.folder_id,
@@ -224,15 +271,50 @@ def bootstrap() -> dict:
         folder_unread = {int(folder_id): int(count) for folder_id, count in folder_unread_rows}
         google_id, google_secret = app_credentials("google")
         microsoft_id, microsoft_secret = app_credentials("microsoft")
+        labels = db.scalars(select(Label).order_by(Label.name)).all()
+        scheduled = db.scalar(
+            select(func.count()).select_from(OutboxItem).where(OutboxItem.status.in_(["scheduled", "failed"]))
+        ) or 0
+        flagged = dict(
+            db.execute(
+                select(Account.session_id, func.count(Message.id))
+                .join(Message, Message.account_id == Account.id)
+                .join(Folder, Folder.id == Message.folder_id)
+                .where(Message.flagged.is_(True), Folder.role.notin_(["trash", "spam", "all"]))
+                .group_by(Account.session_id)
+            ).all()
+        )
+        now = datetime.now(timezone.utc)
+        snoozed = dict(
+            db.execute(
+                select(Account.session_id, func.count(Message.id))
+                .join(Message, Message.account_id == Account.id)
+                .where(Message.snoozed_until.is_not(None), Message.snoozed_until > now)
+                .group_by(Account.session_id)
+            ).all()
+        )
+        get = lambda key: _setting(db, key, SETTING_DEFAULTS[key])  # noqa: E731
         return {
+            "version": __version__,
             "active_session_id": active,
             "sessions": [_session_out(db, row, unread) for row in sessions],
             "accounts": [_account_out(row) for row in accounts],
             "folders": [_folder_out(row, folder_unread.get(row.id, 0)) for row in folders],
+            "labels": [{"id": row.id, "session_id": row.session_id, "name": row.name, "color": row.color} for row in labels],
+            "counts": {
+                "scheduled": int(scheduled),
+                "flagged": {str(key): int(value) for key, value in flagged.items()},
+                "snoozed": {str(key): int(value) for key, value in snoozed.items()},
+            },
             "settings": {
-                "theme": _setting(db, "theme", "system"),
-                "density": _setting(db, "density", "comfortable"),
-                "load_remote_images": _setting(db, "load_remote_images", "0") == "1",
+                "theme": get("theme"),
+                "density": get("density"),
+                "load_remote_images": get("load_remote_images") == "1",
+                "reading_pane": get("reading_pane"),
+                "accent": get("accent"),
+                "undo_send_seconds": int(get("undo_send_seconds") or 0),
+                "notify": get("notify") == "1",
+                "conversations": get("conversations") == "1",
             },
             "oauth": {
                 "google_client_id": google_id,
@@ -254,6 +336,7 @@ def create_session(name: str, color: str = "") -> dict:
         )
         db.add(row)
         db.flush()
+        record(db, "session.create", session_id=row.id, target=row.name)
         return _session_out(db, row, {})
 
 
@@ -268,6 +351,7 @@ def update_session(session_id: int, name: str | None, color: str | None, sort_or
             row.color = color.strip()
         if sort_order is not None:
             row.sort_order = sort_order
+        record(db, "session.update", session_id=row.id, target=row.name, detail={"name": name, "color": color})
         unread = _unread_by_session(db)
         return _session_out(db, row, unread)
 
@@ -287,6 +371,7 @@ def delete_session(session_id: int) -> None:
             other = db.scalar(select(MailSession).where(MailSession.id != session_id))
             if other:
                 _put_setting(db, "active_session_id", str(other.id))
+        record(db, "session.delete", session_id=row.id, target=row.name)
         db.delete(row)
 
 
@@ -298,11 +383,30 @@ def update_settings(payload) -> dict:
             _put_setting(db, "density", payload.density)
         if payload.load_remote_images is not None:
             _put_setting(db, "load_remote_images", "1" if payload.load_remote_images else "0")
+        if payload.reading_pane in {"right", "bottom", "off"}:
+            _put_setting(db, "reading_pane", payload.reading_pane)
+        if payload.accent in {"indigo", "blue", "teal", "violet", "rose", "amber", "slate"}:
+            _put_setting(db, "accent", payload.accent)
+        if payload.undo_send_seconds is not None:
+            _put_setting(db, "undo_send_seconds", str(min(max(int(payload.undo_send_seconds), 0), 30)))
+        if payload.notify is not None:
+            _put_setting(db, "notify", "1" if payload.notify else "0")
+        if payload.conversations is not None:
+            _put_setting(db, "conversations", "1" if payload.conversations else "0")
+        changed = {
+            key: value
+            for key, value in payload.model_dump(exclude_none=True).items()
+            if "secret" not in key and key != "active_session_id"
+        }
         if payload.active_session_id is not None:
             row = db.get(MailSession, payload.active_session_id)
             if row is None:
                 raise MailError("That session is gone.")
+            if _setting(db, "active_session_id") != str(row.id):
+                record(db, "session.switch", session_id=row.id, target=row.name)
             _put_setting(db, "active_session_id", str(row.id))
+        if changed:
+            record(db, "settings.update", detail=changed)
     if payload.google_client_id is not None or payload.google_client_secret:
         save_app_credentials("google", payload.google_client_id, payload.google_client_secret)
     if payload.microsoft_client_id is not None or payload.microsoft_client_secret:
@@ -371,6 +475,7 @@ def create_password_account(payload) -> dict:
         db.flush()
         secret_put(f"account:{account.id}", secret)
         save_remote_folders(db, account.id, remote_folders)
+        record(db, "account.add", session_id=account.session_id, account_id=account.id, target=account.email, detail={"provider": account.provider, "auth": "password"})
         return _account_out(account)
 
 
@@ -416,6 +521,7 @@ def connect_oauth_account(provider: str, session_id: int) -> dict:
             account.sync_enabled = True
             account.last_error = ""
         secret_put(f"account:{account.id}", spec["secret"])
+        record(db, "account.connect", session_id=account.session_id, account_id=account.id, target=account.email, detail={"provider": account.provider, "auth": account.auth_type})
         return _account_out(account)
 
 
@@ -434,8 +540,16 @@ def update_account(account_id: int, payload) -> dict:
             account.color = payload.color.strip()
         if payload.sync_enabled is not None:
             account.sync_enabled = payload.sync_enabled
+        if payload.signature is not None:
+            account.signature = payload.signature[:20_000]
         password = (payload.password or "").strip()
         auth_type = account.auth_type
+        changes = payload.model_dump(exclude_none=True)
+        if "password" in changes:
+            changes["password"] = "(changed)"
+        if "signature" in changes:
+            changes["signature"] = "(updated)"
+        record(db, "account.update", session_id=account.session_id, account_id=account.id, target=account.email, detail=changes)
     if password:
         if auth_type != "password":
             raise MailError("This account signs in with the browser, not a password.")
@@ -451,56 +565,153 @@ def delete_account(account_id: int) -> None:
         account = db.get(Account, account_id)
         if account is None:
             raise MailError("That account is gone.")
+        record(db, "account.remove", session_id=account.session_id, account_id=account.id, target=account.email)
         db.delete(account)
     secret_delete(f"account:{account_id}")
 
 
-def list_messages(session_id: int, folder_role: str | None, folder_id: int | None, account_id: int | None, query: str, limit: int, offset: int) -> dict:
-    limit = min(max(limit, 1), 500)
+def _aware(value: datetime | None) -> datetime | None:
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _role_ok(role_filter: str, folder: Folder, row: Message, now: datetime) -> bool:
+    snoozed = row.snoozed_until is not None and _aware(row.snoozed_until) > now
+    if role_filter == "flagged":
+        return row.flagged and folder.role not in {"trash", "spam"}
+    if role_filter == "snoozed":
+        return snoozed
+    if role_filter == "unread":
+        return not row.seen and folder.role not in {"trash", "spam", "sent", "drafts"}
+    if role_filter == "everything":
+        return folder.role not in {"trash", "spam"}
+    if role_filter == "inbox":
+        return folder.role == "inbox" and not snoozed
+    return folder.role == role_filter
+
+
+def list_messages(
+    session_id: int,
+    folder_role: str | None,
+    folder_id: int | None,
+    account_id: int | None,
+    query: str,
+    limit: int,
+    offset: int,
+    label_id: int | None = None,
+) -> dict:
+    limit = min(max(limit, 1), 1000)
     offset = max(offset, 0)
+    spec = parse_search(query)
+    now = datetime.now(timezone.utc)
     with session_scope() as db:
         if db.get(MailSession, session_id) is None:
             raise MailError("That session is gone.")
         accounts = {row.id: row for row in db.scalars(select(Account).where(Account.session_id == session_id)).all()}
         if not accounts:
-            return {"messages": []}
+            return {"messages": [], "total": 0}
         folders = {
             row.id: row
             for row in db.scalars(select(Folder).where(Folder.account_id.in_(list(accounts)))).all()
         }
-        if query.strip():
-            match = fts_query(query)
+        stmt = select(Message).where(Message.account_id.in_(list(accounts)))
+        if spec.text:
+            match = fts_query(" ".join(spec.text))
             if not match:
-                return {"messages": []}
+                return {"messages": [], "total": 0}
             try:
-                ids = fts_search_ids(db, match, session_id, 1000)
+                ids = fts_search_ids(db, match, session_id, 5000)
             except OperationalError as exc:
                 raise MailError("That search could not be run.") from exc
-            rows = []
-            if ids:
-                found = {row.id: row for row in db.scalars(select(Message).where(Message.id.in_(ids))).all()}
-                rows = [found[item] for item in ids if item in found]
-        else:
-            stmt = (
-                select(Message)
-                .where(Message.account_id.in_(list(accounts)))
-                .order_by(Message.date.desc(), Message.id.desc())
+            if not ids:
+                return {"messages": [], "total": 0}
+            stmt = stmt.where(Message.id.in_(ids))
+        for needle in spec.from_:
+            like = f"%{needle}%"
+            stmt = stmt.where(or_(func.lower(Message.from_email).like(like), func.lower(Message.from_name).like(like)))
+        for needle in spec.subject:
+            stmt = stmt.where(func.lower(Message.subject).like(f"%{needle}%"))
+        for needle in spec.to:
+            like = f"%{needle}%"
+            stmt = stmt.where(or_(func.lower(Message.to_json).like(like), func.lower(Message.cc_json).like(like)))
+        if spec.unread is not None:
+            stmt = stmt.where(Message.seen.is_(not spec.unread))
+        if spec.flagged:
+            stmt = stmt.where(Message.flagged.is_(True))
+        if spec.before is not None:
+            stmt = stmt.where(Message.date < spec.before)
+        if spec.after is not None:
+            stmt = stmt.where(Message.date >= spec.after)
+        if folder_id:
+            stmt = stmt.where(Message.folder_id == folder_id)
+        if account_id:
+            stmt = stmt.where(Message.account_id == account_id)
+        wanted_labels: set[int] = set()
+        if label_id:
+            wanted_labels.add(label_id)
+        if spec.labels:
+            names = {row.id: row.name.lower() for row in db.scalars(select(Label).where(Label.session_id == session_id)).all()}
+            for needle in spec.labels:
+                hits = {key for key, value in names.items() if value == needle}
+                if not hits:
+                    return {"messages": [], "total": 0}
+                wanted_labels |= hits
+        if wanted_labels:
+            for wanted in wanted_labels:
+                stmt = stmt.where(
+                    Message.id.in_(select(MessageLabel.message_id).where(MessageLabel.label_id == wanted))
+                )
+        if spec.has_attachment:
+            stmt = stmt.where(
+                Message.id.in_(select(Attachment.message_id).where(Attachment.inline.is_(False)))
             )
-            rows = db.scalars(stmt).all()
-        filtered = []
+        rows = db.scalars(stmt.order_by(Message.date.desc(), Message.id.desc())).all()
+        role_filter = spec.folder or (folder_role if not folder_id else "") or ""
+        if spec.snoozed:
+            role_filter = "snoozed"
+        kept: list[tuple[Message, Account, Folder]] = []
         for row in rows:
             folder = folders.get(row.folder_id)
             account = accounts.get(row.account_id)
             if folder is None or account is None or folder.role == "all":
                 continue
-            if folder_role and folder.role != folder_role:
+            if role_filter and not _role_ok(role_filter, folder, row, now):
                 continue
-            if folder_id and row.folder_id != folder_id:
+            if spec.account and spec.account not in account.email.lower():
                 continue
-            if account_id and row.account_id != account_id:
-                continue
-            filtered.append(_message_out(row, account, folder))
-        return {"messages": filtered[offset : offset + limit]}
+            kept.append((row, account, folder))
+        if role_filter == "inbox":
+            kept.sort(key=lambda item: not item[0].pinned)
+        page = kept[offset : offset + limit]
+        labels, with_files = _extras(db, [row.id for row, _, _ in page])
+        return {
+            "messages": [_message_out(row, account, folder, labels, with_files) for row, account, folder in page],
+            "total": len(kept),
+        }
+
+
+_INLINE_LIMIT = 4 * 1024 * 1024
+
+
+def _inline_images(body_html: str, attachments: list[Attachment]) -> str:
+    """Swap cid: references for data: URIs so inline images render inside the sandboxed reader."""
+    if not body_html or "cid:" not in body_html.lower():
+        return body_html
+    from session_mail.db import current_settings
+
+    root = current_settings().attachment_dir
+    for item in attachments:
+        if not item.content_id or not item.storage_name or item.size > _INLINE_LIMIT:
+            continue
+        path = root / item.storage_name
+        if not path.exists():
+            continue
+        data = base64.b64encode(path.read_bytes()).decode("ascii")
+        uri = f"data:{item.content_type or 'application/octet-stream'};base64,{data}"
+        pattern = re.compile(r"cid:" + re.escape(item.content_id), re.IGNORECASE)
+        body_html = pattern.sub(lambda _match, value=uri: value, body_html)
+    return body_html
 
 
 def _detail(db, message: Message) -> dict:
@@ -508,8 +719,11 @@ def _detail(db, message: Message) -> dict:
     folder = db.get(Folder, message.folder_id)
     if account is None or folder is None:
         raise MailError("That message is gone.")
-    base = _message_out(message, account, folder)
-    attachments = db.scalars(select(Attachment).where(Attachment.message_id == message.id)).all()
+    labels, with_files = _extras(db, [message.id])
+    base = _message_out(message, account, folder, labels, with_files)
+    all_attachments = db.scalars(select(Attachment).where(Attachment.message_id == message.id)).all()
+    attachments = [item for item in all_attachments if not item.inline]
+    body_html = _inline_images(message.body_html or "", all_attachments)
     peers = []
     if message.thread_id:
         peer_rows = db.scalars(
@@ -526,7 +740,8 @@ def _detail(db, message: Message) -> dict:
     base.update(
         {
             "body_text": message.body_text or "",
-            "body_html": message.body_html or "",
+            "body_html": body_html,
+            "size": message.size,
             "message_id": message.message_id,
             "in_reply_to": message.in_reply_to,
             "references": _loads(message.references_json, []),
@@ -604,10 +819,12 @@ def set_flags(message_id: int, seen: bool | None, flagged: bool | None) -> dict:
         finally:
             logout(client)
     with session_scope() as db:
-        message, _, _ = _need_message(db, message_id)
-        if seen is not None:
+        message, account, _ = _need_message(db, message_id)
+        if seen is not None and message.seen != seen:
+            record(db, "message.read" if seen else "message.unread", session_id=account.session_id, account_id=account.id, target=message.subject or "", detail={"message_id": message.id})
             message.seen = seen
-        if flagged is not None:
+        if flagged is not None and message.flagged != flagged:
+            record(db, "message.flag" if flagged else "message.unflag", session_id=account.session_id, account_id=account.id, target=message.subject or "", detail={"message_id": message.id})
             message.flagged = flagged
         return _detail(db, message)
 
@@ -645,8 +862,11 @@ def move_message(message_id: int, role: str) -> dict:
                 db.add(dest)
                 db.flush()
             dest_id = dest.id
-        message, _, _ = _need_message(db, message_id)
+        message, account_row, source = _need_message(db, message_id)
+        if source.id != dest_id:
+            record(db, "message.move", session_id=account_row.session_id, account_id=account_row.id, target=message.subject or "", detail={"message_id": message.id, "from": source.role, "to": role})
         message.folder_id = dest_id
+        message.snoozed_until = None
         if role == "inbox":
             message.auto_spam = False
         return _detail(db, message)
@@ -658,6 +878,7 @@ def report_spam(message_id: int) -> dict:
         train(db, account.session_id, spam_text(message), True)
         remember(db, BlockEntry, account.session_id, message.from_email)
         forget(db, AllowEntry, account.session_id, message.from_email)
+        record(db, "spam.report", session_id=account.session_id, account_id=account.id, target=message.from_email, detail={"message_id": message.id, "subject": message.subject})
     move_message(message_id, "spam")
     with session_scope() as db:
         message, _, _ = _need_message(db, message_id)
@@ -672,6 +893,7 @@ def mark_not_spam(message_id: int) -> dict:
         train(db, account.session_id, spam_text(message), False)
         forget(db, BlockEntry, account.session_id, message.from_email)
         remember(db, AllowEntry, account.session_id, message.from_email)
+        record(db, "spam.not_spam", session_id=account.session_id, account_id=account.id, target=message.from_email, detail={"message_id": message.id, "subject": message.subject})
     move_message(message_id, "inbox")
     with session_scope() as db:
         message, _, _ = _need_message(db, message_id)
@@ -684,6 +906,7 @@ def undo_auto_spam(message_id: int) -> dict:
     with session_scope() as db:
         message, account, _ = _need_message(db, message_id)
         train(db, account.session_id, spam_text(message), False)
+        record(db, "spam.undo_auto", session_id=account.session_id, account_id=account.id, target=message.from_email, detail={"message_id": message.id})
     move_message(message_id, "inbox")
     with session_scope() as db:
         message, _, _ = _need_message(db, message_id)
@@ -698,8 +921,16 @@ def _plain_html(body: str) -> str:
 
 
 def _build_outgoing(account: Account, payload) -> EmailMessage:
-    if not payload.to.strip():
+    if not (payload.to.strip() or payload.cc.strip() or payload.bcc.strip()):
         raise MailError("Add at least one recipient.")
+    from email.utils import getaddresses
+
+    for field in (payload.to, payload.cc, payload.bcc):
+        if not (field or "").strip():
+            continue
+        for _name, address in getaddresses([field]):
+            if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", address or ""):
+                raise MailError(f"“{address or field.strip()}” isn't a valid email address.")
     message = EmailMessage()
     message["From"] = formataddr((account.display_name or account.email, account.email))
     message["To"] = payload.to.strip()
@@ -717,8 +948,22 @@ def _build_outgoing(account: Account, payload) -> EmailMessage:
         references.append(payload.in_reply_to)
     if references:
         message["References"] = " ".join(references)
-    message.set_content(payload.body or "")
-    message.add_alternative(_plain_html(payload.body or ""), subtype="html")
+    if payload.priority == "high":
+        message["X-Priority"] = "1"
+        message["Importance"] = "high"
+    if payload.read_receipt:
+        message["Disposition-Notification-To"] = account.email
+    body_html = (payload.body_html or "").strip()
+    text = payload.body or (html_to_text(body_html) if body_html else "")
+    message.set_content(text)
+    if body_html:
+        wrapped = (
+            '<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.55;color:#111827">'
+            f"{body_html}</body></html>"
+        )
+        message.add_alternative(wrapped, subtype="html")
+    else:
+        message.add_alternative(_plain_html(text), subtype="html")
     total = 0
     for item in payload.attachments:
         try:
@@ -743,6 +988,24 @@ def send_mail(payload) -> dict:
         if account is None:
             raise MailError("Choose an account to send from.")
     message = _build_outgoing(account, payload)
+    send_at = _aware(payload.send_at)
+    if send_at is not None and send_at > datetime.now(timezone.utc) + timedelta(seconds=30):
+        with session_scope() as db:
+            data = payload.model_dump(mode="json")
+            data["send_at"] = None
+            item = OutboxItem(account_id=account.id, payload_json=json.dumps(data), send_at=send_at)
+            db.add(item)
+            if payload.draft_id:
+                draft = db.get(Draft, payload.draft_id)
+                if draft is not None:
+                    db.delete(draft)
+            db.flush()
+            record(db, "message.schedule", session_id=account.session_id, account_id=account.id, target=payload.subject or "(no subject)", detail={"to": payload.to, "send_at": send_at.isoformat(), "outbox_id": item.id})
+            return {"scheduled": True, "id": item.id, "send_at": send_at.isoformat()}
+    return _deliver(account, payload, message)
+
+
+def _deliver(account: Account, payload, message: EmailMessage) -> dict:
     raw = message.as_bytes()
     append_error = ""
     if account.auth_type != "local":
@@ -790,6 +1053,14 @@ def send_mail(payload) -> dict:
                 original.answered = True
         if append_error:
             account.last_error = append_error
+        record(
+            db,
+            "message.send",
+            session_id=account.session_id,
+            account_id=account.id,
+            target=payload.subject or "(no subject)",
+            detail={"to": payload.to, "cc": payload.cc, "bcc": bool(payload.bcc), "attachments": len(payload.attachments)},
+        )
         return _detail(db, row)
 
 
@@ -807,7 +1078,7 @@ def save_draft(payload) -> dict:
         draft.cc_text = payload.cc
         draft.bcc_text = payload.bcc
         draft.subject = payload.subject
-        draft.body = payload.body
+        draft.body = payload.body_html or payload.body
         draft.in_reply_to = payload.in_reply_to
         draft.references_json = json.dumps(payload.references)
         draft.reply_to_message_id = payload.reply_to_message_id
@@ -848,6 +1119,8 @@ def delete_draft(draft_id: int) -> None:
     with session_scope() as db:
         draft = db.get(Draft, draft_id)
         if draft is not None:
+            account = db.get(Account, draft.account_id)
+            record(db, "draft.discard", session_id=account.session_id if account else None, account_id=draft.account_id, target=draft.subject or "(no subject)")
             db.delete(draft)
 
 
@@ -861,6 +1134,7 @@ def delete_block(entry_id: int) -> None:
     with session_scope() as db:
         row = db.get(BlockEntry, entry_id)
         if row is not None:
+            record(db, "spam.unblock", session_id=row.session_id, target=row.value)
             db.delete(row)
 
 
@@ -875,11 +1149,11 @@ def _html_body(text: str) -> str:
 def seed_demo() -> dict:
     now = datetime.now(timezone.utc)
     samples = [
-        ("business", "ada@northwind.example", "Ada", "#1d4e89"),
-        ("business", "ben@northwind.example", "Ben", "#0e6b52"),
-        ("business", "cio@northwind.example", "Cio", "#6b4c9a"),
-        ("personal", "alex@personal.example", "Alex", "#8d4a32"),
-        ("personal", "sam@personal.example", "Sam", "#a15c07"),
+        ("business", "ada@northwind.example", "Ada", "#4f46e5"),
+        ("business", "ben@northwind.example", "Ben", "#0ea5e9"),
+        ("business", "cio@northwind.example", "Cio", "#8b5cf6"),
+        ("personal", "alex@personal.example", "Alex", "#f43f5e"),
+        ("personal", "sam@personal.example", "Sam", "#f59e0b"),
     ]
     with session_scope() as db:
         for account in db.scalars(select(Account).where(Account.auth_type == "local")).all():
@@ -890,7 +1164,7 @@ def seed_demo() -> dict:
         business = sessions.get("business") or db.scalar(select(MailSession).order_by(MailSession.sort_order))
         personal = sessions.get("personal")
         if personal is None:
-            personal = MailSession(name="Personal", color="#8d4a32", sort_order=1)
+            personal = MailSession(name="Personal", color="#e11d48", sort_order=1)
             db.add(personal)
             db.flush()
         if business is None:
@@ -1004,5 +1278,9 @@ def seed_demo() -> dict:
             seen=True,
             message_id="<photos@personal.example>",
         )
+        from session_mail.demo import seed_extras
+
+        seed_extras(db, made, business, personal, now, _html_body)
+        record(db, "demo.seed", detail={"accounts": len(made)})
         _put_setting(db, "active_session_id", str(business.id))
     return bootstrap()

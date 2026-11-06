@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
 $root = Split-Path -Parent $PSScriptRoot
 $launcher = Join-Path $root "desktop\engine-launcher"
 $binaries = Join-Path $root "desktop\src-tauri\binaries"

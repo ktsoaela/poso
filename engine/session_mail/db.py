@@ -94,6 +94,7 @@ def init_db(settings: Settings) -> None:
         cursor.close()
 
     Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
     with engine.begin() as conn:
         conn.exec_driver_sql(FTS_SQL)
         for statement in TRIGGER_SQL:
@@ -104,12 +105,40 @@ def init_db(settings: Settings) -> None:
         _seed_sessions(db)
 
 
+def _sql_default(column) -> str:
+    default = column.default
+    value = getattr(default, "arg", None) if default is not None else None
+    if value is None or callable(value):
+        return "NULL" if column.nullable else "''"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Older mail.db files predate some columns; add them in place so upgrades keep mail."""
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            existing = {row[1] for row in conn.exec_driver_sql(f'PRAGMA table_info("{table.name}")').all()}
+            if not existing:
+                continue
+            for column in table.columns:
+                if column.name in existing:
+                    continue
+                kind = column.type.compile(dialect=engine.dialect)
+                conn.exec_driver_sql(
+                    f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {kind} DEFAULT {_sql_default(column)}'
+                )
+
+
 def _seed_sessions(db: Session) -> None:
     count = db.scalar(select(func.count()).select_from(MailSession)) or 0
     if count:
         return
-    business = MailSession(name="Business", color="#1d4e89", sort_order=0)
-    personal = MailSession(name="Personal", color="#8d4a32", sort_order=1)
+    business = MailSession(name="Business", color="#4f46e5", sort_order=0)
+    personal = MailSession(name="Personal", color="#e11d48", sort_order=1)
     db.add_all([business, personal])
     db.flush()
     db.merge(Setting(key="active_session_id", value=str(business.id)))

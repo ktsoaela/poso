@@ -22,6 +22,7 @@ export interface Account {
   smtp_mode: string;
   color: string;
   sync_enabled: boolean;
+  signature: string;
   last_sync_at: string | null;
   last_error: string;
 }
@@ -32,6 +33,13 @@ export interface MailFolder {
   imap_name: string;
   role: string;
   unread: number;
+}
+
+export interface Label {
+  id: number;
+  session_id: number;
+  name: string;
+  color: string;
 }
 
 export interface Address {
@@ -60,7 +68,14 @@ export interface Message {
   account_email: string;
   account_color: string;
   folder_role: string;
+  folder_name: string;
+  labels: number[];
+  has_attachments: boolean;
+  snoozed_until: string | null;
+  pinned: boolean;
   threadCount?: number;
+  threadUnread?: boolean;
+  threadIds?: number[];
 }
 
 export interface Attachment {
@@ -78,6 +93,7 @@ export interface MessageDetail extends Message {
   references: string[];
   attachments: Attachment[];
   thread: Message[];
+  size: number;
 }
 
 export interface Draft {
@@ -95,6 +111,19 @@ export interface Draft {
   updated_at: string | null;
 }
 
+export interface OutboxItem {
+  id: number;
+  account_id: number;
+  account_email: string;
+  send_at: string | null;
+  status: string;
+  error: string;
+  to: string;
+  subject: string;
+  snippet: string;
+  payload: Record<string, unknown>;
+}
+
 export interface Provider {
   id: string;
   label: string;
@@ -108,16 +137,32 @@ export interface Provider {
   hint: string;
 }
 
+export type Accent = "indigo" | "blue" | "teal" | "violet" | "rose" | "amber" | "slate";
+
+export interface AppSettings {
+  theme: "light" | "dark" | "system";
+  density: "comfortable" | "compact";
+  load_remote_images: boolean;
+  reading_pane: "right" | "bottom" | "off";
+  accent: Accent;
+  undo_send_seconds: number;
+  notify: boolean;
+  conversations: boolean;
+}
+
 export interface Bootstrap {
+  version: string;
   active_session_id: number;
   sessions: Session[];
   accounts: Account[];
   folders: MailFolder[];
-  settings: {
-    theme: "light" | "dark" | "system";
-    density: "comfortable" | "compact";
-    load_remote_images: boolean;
+  labels: Label[];
+  counts: {
+    scheduled: number;
+    flagged: Record<string, number>;
+    snoozed: Record<string, number>;
   };
+  settings: AppSettings;
   oauth: {
     google_client_id: string;
     google_has_secret: boolean;
@@ -127,41 +172,105 @@ export interface Bootstrap {
   };
 }
 
-export type RoleName = "inbox" | "sent" | "drafts" | "archive" | "trash" | "spam";
+export type RoleName =
+  | "inbox"
+  | "flagged"
+  | "snoozed"
+  | "unread"
+  | "everything"
+  | "scheduled"
+  | "sent"
+  | "drafts"
+  | "archive"
+  | "trash"
+  | "spam";
 
 export type Mailbox =
   | { kind: "role"; role: RoleName; accountId?: number }
-  | { kind: "folder"; folderId: number };
+  | { kind: "folder"; folderId: number }
+  | { kind: "label"; labelId: number };
+
+export type QuickFilter = "all" | "unread" | "flagged" | "attachments";
 
 export interface ComposeFile {
   filename: string;
   content_type: string;
   data_base64: string;
+  size: number;
 }
 
 export interface ComposeState {
+  key: number;
   accountId: number | null;
   to: string;
   cc: string;
   bcc: string;
   subject: string;
-  body: string;
+  html: string;
   inReplyTo: string;
   references: string[];
   replyToMessageId: number | null;
   draftId: number | null;
   showCc: boolean;
   files: ComposeFile[];
+  priority: "normal" | "high";
+  readReceipt: boolean;
+  minimized: boolean;
+  expanded: boolean;
 }
 
 export interface Toast {
   id: number;
   text: string;
-  undoId?: number;
+  tone?: "default" | "success" | "error";
+  action?: { label: string; run: () => void };
+  ttl?: number;
 }
 
 export interface BlockEntry {
   id: number;
   kind: string;
   value: string;
+}
+
+export interface RuleCondition {
+  field: "from" | "to" | "subject" | "body" | "any" | "account";
+  op: "contains" | "not_contains" | "equals" | "starts_with" | "ends_with";
+  value: string;
+}
+
+export interface RuleAction {
+  type: "move" | "label" | "read" | "flag" | "spam" | "archive" | "trash";
+  role?: string;
+  label_id?: number;
+}
+
+export interface Rule {
+  id: number;
+  session_id: number;
+  name: string;
+  enabled: boolean;
+  match: "all" | "any";
+  conditions: RuleCondition[];
+  actions: RuleAction[];
+  stop: boolean;
+  sort_order: number;
+}
+
+export interface AuditEvent {
+  id: number;
+  at: string | null;
+  session_id: number | null;
+  account_id: number | null;
+  actor: string;
+  action: string;
+  target: string;
+  detail: string;
+}
+
+export interface Contact {
+  email: string;
+  name: string;
+  count: number;
+  last: string | null;
 }
