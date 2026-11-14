@@ -25,7 +25,7 @@ Mail is synced over IMAP and sent over SMTP, including Gmail and Outlook account
 
 The page is [`docs/index.html`](docs/index.html). It goes live when GitHub Pages is set to the `docs` folder on the default branch.
 
-A [GitHub release](https://github.com/ktsoaela/poso/releases) is the download page, not a store listing. Attach `Poso.Setup.exe`, `Poso.apk`, and `Poso.AppImage` to the latest release and the buttons on the page download those files. Only the Windows installer is built so far: `desktop\release-poso\Poso Setup 1.0.0.exe`. Where that mailbox is stored is in the [guide](docs/guide.md).
+Download the Windows installer from the [v1 release](https://github.com/ktsoaela/poso/releases/download/v1/Poso.Setup.exe). The public page is [https://ktsoaela.github.io/poso/](https://ktsoaela.github.io/poso/). Where that mailbox is stored is in the [guide](docs/guide.md).
 
 ![Business session with sample mail](docs/session-demo.png)
 
